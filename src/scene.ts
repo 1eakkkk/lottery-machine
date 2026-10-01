@@ -151,12 +151,14 @@ export class MachineScene {
     }
     this.rotors.push(rotorGroups);
     if(GAMES[this.game].mixing==='airflow') {
-      // Visible blower manifold instead of mechanical paddles.
-      for(const side of [-1,1]) {
-        this.mesh(new THREE.CylinderGeometry(.075,.075,.62,20),steel,x+side*.46,1.86,-.27);
-        this.mesh(new THREE.CylinderGeometry(.11,.075,.12,20),dark,x+side*.46,2.20,-.27);
+      // The central diffuser matches the upward jet in the force field.
+      this.mesh(new THREE.CylinderGeometry(.17,.25,.48,32),steel,x,1.77,0);
+      this.mesh(new THREE.CylinderGeometry(.31,.31,.25,32),dark,x,1.50,0);
+      this.mesh(new THREE.CylinderGeometry(.28,.17,.07,32),dark,x,2.025,0);
+      for(let vent=0;vent<8;vent++) {
+        const angle=vent*Math.PI/4;
+        this.mesh(new THREE.BoxGeometry(.16,.006,.016),steel,x+.15*Math.cos(angle),2.063,.15*Math.sin(angle)).rotation.y=-angle;
       }
-      this.mesh(new THREE.CylinderGeometry(.31,.31,.25,32),dark,x,1.50,-.18);
     }
     const tube=tubeGeometry(),tubeMesh=new THREE.BufferGeometry();tubeMesh.setAttribute('position',new THREE.BufferAttribute(tube.vertices,3));tubeMesh.setIndex(new THREE.BufferAttribute(tube.indices,1));tubeMesh.computeVertexNormals();this.mesh(tubeMesh,glass.clone(),x,0,0);
     for (const y of [1.02, 1.8]) this.ring(TUBE_RADIUS + 0.01, x, y, PORT_Z, bronze);
@@ -184,7 +186,11 @@ export class MachineScene {
     for (let i = 0; i < count; i++) {
       const ball = this.mesh(ballGeometry, ballMaterial, x, 2.8, 0);
       const labelCanvas=document.createElement('canvas');labelCanvas.width=128;labelCanvas.height=128;
-      const ctx=labelCanvas.getContext('2d')!;ctx.fillStyle='#fff9ed';ctx.beginPath();ctx.arc(64,64,58,0,Math.PI*2);ctx.fill();ctx.fillStyle='#080808';ctx.font='600 62px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(this.game==='fc3d'?i:i+1),64,67);
+      const ctx=labelCanvas.getContext('2d')!;ctx.fillStyle='#fff9ed';ctx.beginPath();ctx.arc(64,64,58,0,Math.PI*2);ctx.fill();ctx.fillStyle='#080808';ctx.font='600 62px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
+      const number=String(this.game==='fc3d'?i:i+1);
+      ctx.fillText(number,64,number==='6'||number==='9'?61:67);
+      // The orientation mark is printed on the same curved surface as the digit.
+      if(number==='6'||number==='9')ctx.fillRect(46,91,36,5);
       const numberTexture=new THREE.CanvasTexture(labelCanvas);numberTexture.colorSpace=THREE.SRGBColorSpace;
       const labelMaterial = new THREE.MeshStandardMaterial({ map: numberTexture, transparent: true, alphaTest: .5, roughness: .9, metalness: 0 });
       // Repeated curved prints rotate and become occluded with the physical ball.

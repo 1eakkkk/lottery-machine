@@ -112,8 +112,6 @@ export class Chamber {
         // Once a ball is in the isolated outlet it falls under gravity, without jet force.
         if(p.y<FLOOR_Y) continue;
         const wind=airVelocity(p.x-this.offset,p.y-CENTER_Y,p.z,tick*DT,phase),v=body.linvel();
-        // The smaller rear ball group uses a lower blower setting.
-        if(this.color==='blue') {wind.x*=.7;wind.y*=.7;wind.z*=.7;}
         const dx=wind.x-v.x,dy=wind.y-v.y,dz=wind.z-v.z;
         const drag=.5*1.225*.47*Math.PI*BALL_RADIUS**2*Math.hypot(dx,dy,dz);
         body.addForce({x:drag*dx,y:drag*dy,z:drag*dz},true);

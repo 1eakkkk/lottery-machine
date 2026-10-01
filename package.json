@@ -3,14 +3,15 @@
   "version": "0.1.0",
   "description": "五种彩票玩法的三维物理开奖模拟器",
   "scripts": {
-    "test": "npm run test:accounts && tsx scripts/verify-physics.ts && tsx scripts/verify-physics.ts dlt && tsx scripts/verify-extended.ts",
+    "test": "npm run test:accounts && npm run test:airflow && tsx scripts/verify-physics.ts && tsx scripts/verify-physics.ts dlt && tsx scripts/verify-extended.ts",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && tsc -p tsconfig.server.json && vite build",
     "dev:accounts": "wrangler dev --port 8787 --local-upstream localhost:8787",
     "db:local": "wrangler d1 migrations apply lottery-accounts --local",
     "db:remote": "wrangler d1 migrations apply lottery-accounts --remote",
     "test:accounts": "wrangler deploy --dry-run --assets public --outdir artifacts/account-worker && tsx scripts/verify-accounts.ts",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "test:airflow": "tsx scripts/verify-airflow.ts"
   },
   "type": "module",
   "dependencies": {
