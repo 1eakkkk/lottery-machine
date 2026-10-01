@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { numberedBallSurface } from './ball-label';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { BALL_RADIUS, CHAMBER_RADIUS, CENTER_Y, FLOOR_Y, PORT_Z, PORT_RADIUS,TUBE_RADIUS, ROTOR_Y, ROTOR_X, ROTOR_Z, ANGULAR_SPEED, DT, floorGeometry,tubeGeometry, type Snapshot } from './physics';
 
@@ -6,12 +7,13 @@ export class MachineScene {
   renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); camera: THREE.PerspectiveCamera; controls: OrbitControls;
   balls: THREE.Mesh[] = []; rotors: THREE.Group[][] = []; gates: THREE.Mesh[] = [];
   outletGates:THREE.Mesh[]=[];
+  private currentView = 'all';
   observer: ResizeObserver; initialPosition = new THREE.Vector3(0, 4.7, 9.5);
   constructor(public container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7));
     this.renderer.setClearColor('#eeeee9'); this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.3;
     this.renderer.domElement.setAttribute('aria-label', '双色球三维机械开奖机器，可拖动旋转视角');
     this.container.append(this.renderer.domElement);
@@ -19,7 +21,7 @@ export class MachineScene {
     this.camera = new THREE.PerspectiveCamera(34, 1, 0.1, 40); this.camera.position.copy(this.initialPosition);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.target.set(0, 2.1, 0); this.controls.enableDamping = true; this.controls.enablePan = false;
-    this.controls.minDistance = 5; this.controls.maxDistance = 15; this.controls.maxPolarAngle = Math.PI / 2; this.controls.minPolarAngle = 0.35;
+    this.controls.minDistance = 3; this.controls.maxDistance = 20; this.controls.maxPolarAngle = Math.PI / 2; this.controls.minPolarAngle = 0.35;
     this.scene.add(new THREE.HemisphereLight('#ffffff', '#b3b3a8', 3));
     const key = new THREE.DirectionalLight('#fff7e5', 4); key.position.set(-3, 7, 5); key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024); key.shadow.camera.left = -6; key.shadow.camera.right = 6;
@@ -28,7 +30,7 @@ export class MachineScene {
     const fill = new THREE.DirectionalLight('#d6e4ff', 2); fill.position.set(4, 4, -3); this.scene.add(fill);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ color: '#eeeee9', roughness: 0.78 }));
     floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; this.scene.add(floor);
-    this.machine(-1.45, '#e74337', 33, 'RED  /  33'); this.machine(1.45, '#3478c1', 16, 'BLUE  /  16');
+    this.machine(-1.45, '#b83029', 33, 'RED  /  33'); this.machine(1.45, '#16368f', 16, 'BLUE  /  16');
     this.observer = new ResizeObserver(() => this.resize()); this.observer.observe(container); this.resize();
   }
   material(color: THREE.ColorRepresentation, metalness = 0.65) { return new THREE.MeshStandardMaterial({ color, metalness, roughness: 0.25 }); }
@@ -90,26 +92,32 @@ export class MachineScene {
     for (const side of [-1, 1]) this.mesh(new THREE.BoxGeometry(1.5, 0.22, 0.05), glass.clone(), x, 0.76, PORT_Z + side * 0.22);
     this.mesh(new THREE.PlaneGeometry(.88,.22),new THREE.MeshBasicMaterial({map:this.textTexture('一刻开奖','#ffffff','#234771')}),x,1.02,.34);
     this.mesh(new THREE.PlaneGeometry(.70,.18),new THREE.MeshBasicMaterial({map:this.textTexture(name,'#dce7f1','#234771')}),x,.82,.34);
+    const ballGeometry = new THREE.SphereGeometry(BALL_RADIUS, 32, 24);
+    const labelGeometry = numberedBallSurface(BALL_RADIUS + .0012);
+    const grain = new Uint8Array(64 * 64);
+    for (let i = 0; i < grain.length; i++) grain[i] = 110 + Math.floor(Math.random() * 36);
+    const rubberTexture = new THREE.DataTexture(grain, 64, 64, THREE.RedFormat); rubberTexture.needsUpdate = true;
+    rubberTexture.wrapS = rubberTexture.wrapT = THREE.RepeatWrapping;
+    const ballMaterial = new THREE.MeshPhysicalMaterial({ color, roughness: .45, metalness: 0, clearcoat: .12, clearcoatRoughness: .48, bumpMap: rubberTexture, bumpScale: .00015 });
     for (let i = 0; i < count; i++) {
-      const ball = this.mesh(new THREE.SphereGeometry(BALL_RADIUS, 18, 12), new THREE.MeshStandardMaterial({ color, roughness: 0.24, metalness: 0.07 }), x, 2.8, 0);
+      const ball = this.mesh(ballGeometry, ballMaterial, x, 2.8, 0);
       const labelCanvas=document.createElement('canvas');labelCanvas.width=128;labelCanvas.height=128;
-      const ctx=labelCanvas.getContext('2d')!;ctx.fillStyle='#fff9ed';ctx.beginPath();ctx.arc(64,64,58,0,Math.PI*2);ctx.fill();ctx.fillStyle='#303833';ctx.font='700 55px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(i+1).padStart(2,'0'),64,67);
+      const ctx=labelCanvas.getContext('2d')!;ctx.fillStyle='#fff9ed';ctx.beginPath();ctx.arc(64,64,58,0,Math.PI*2);ctx.fill();ctx.fillStyle='#080808';ctx.font='600 62px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(i+1),64,67);
       const numberTexture=new THREE.CanvasTexture(labelCanvas);numberTexture.colorSpace=THREE.SRGBColorSpace;
-      // The label faces the viewer but the ball's rotation remains the physics rotation.
-      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: numberTexture, depthTest: true })); sprite.scale.set(0.08, 0.08, 1);
-      sprite.position.z = BALL_RADIUS + 0.003; ball.add(sprite); this.balls.push(ball);
+      const labelMaterial = new THREE.MeshStandardMaterial({ map: numberTexture, transparent: true, alphaTest: .5, roughness: .9, metalness: 0 });
+      // Repeated curved prints rotate and become occluded with the physical ball.
+      ball.add(new THREE.Mesh(labelGeometry, labelMaterial));
+      this.balls.push(ball);
     }
   }
   resize() {
     const { width, height } = this.container.getBoundingClientRect();
     this.renderer.setSize(width, height); this.camera.aspect = width / height;
-    const distance = width < 600 ? 11.5 : 9.5; this.camera.position.set(0, 4.7, distance);
-    this.camera.fov = width < 600 ? 48 : 34; this.camera.updateProjectionMatrix();
+    this.camera.fov = 36; this.camera.updateProjectionMatrix(); this.view(this.currentView);
   }
   update(s: Snapshot, seedPhase: number, blueStart: number) {
     this.balls.forEach((ball, i) => {
       const j = i * 8; ball.position.set(s.balls[j], s.balls[j + 1], s.balls[j + 2]); ball.quaternion.set(s.balls[j + 3], s.balls[j + 4], s.balls[j + 5], s.balls[j + 6]);
-      ball.children[0].position.copy(this.camera.position).sub(ball.position).normalize().multiplyScalar(BALL_RADIUS+.003).applyQuaternion(ball.quaternion.clone().invert());
     });
     const redMoving = s.tick >= 240 && s.events.filter(e => e.color === 'red').length < 6;
     const blueMoving = blueStart > 0 && s.tick >= blueStart;
@@ -125,8 +133,12 @@ export class MachineScene {
   }
   render() { this.controls.update(); this.renderer.render(this.scene, this.camera); }
   view(name: string) {
-    if (name === 'red') { this.camera.position.set(-1.45, 3.5, 5.2); this.controls.target.set(-1.45, 2.5, 0); }
-    else if (name === 'blue') { this.camera.position.set(1.45, 3.5, 5.2); this.controls.target.set(1.45, 2.5, 0); }
-    else { this.camera.position.set(0, 4.7, this.container.clientWidth < 600 ? 11.5 : 9.5); this.controls.target.set(0, 2.1, 0); }
+    this.currentView = name;
+    if (name === 'red') { this.camera.position.set(-1.45, 3.5, 4.4); this.controls.target.set(-1.45, 2.5, 0); }
+    else if (name === 'blue') { this.camera.position.set(1.45, 3.5, 4.4); this.controls.target.set(1.45, 2.5, 0); }
+    else {
+      const distance = Math.max(7.2, 5.8 / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * this.camera.aspect));
+      this.camera.position.set(0, 2.05 + distance * .25, distance); this.controls.target.set(0, 2.05, 0);
+    }
   }
 }
