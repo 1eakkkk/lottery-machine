@@ -218,7 +218,7 @@ export class MachineScene {
   }
   view(name: string) {
     this.currentView = name;
-    if (name === 'results') {this.camera.position.set(0,1.4,1.3+Math.max(2.8,3/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));this.controls.target.set(0,.588,1.3);}
+    if (name === 'results' || (name==='tray'&&this.resultShown)) {this.camera.position.set(0,1.4,1.3+Math.max(2.8,3/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));this.controls.target.set(0,.588,1.3);}
     else if (name === 'tray') {this.camera.position.set(-1.95,1.5,PORT_Z+Math.max(3,2.4/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));this.controls.target.set(-1.95,.8,PORT_Z);}
     else if (name === 'red') { this.camera.position.set(-1.45, 3.5, 4.4); this.controls.target.set(-1.45, 2.5, 0); }
     else if (name === 'blue') { this.camera.position.set(1.45, 3.5, 4.4); this.controls.target.set(1.45, 2.5, 0); }

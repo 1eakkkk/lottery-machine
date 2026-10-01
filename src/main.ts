@@ -19,7 +19,11 @@ const STORAGE = '1eak-draw-history-v1';
 let history: RecordItem[] = [];
 try { const saved = JSON.parse(localStorage.getItem(STORAGE) || '[]'); if (Array.isArray(saved)) history = saved.filter(r => r && r.model === MODEL_VERSION && Number.isInteger(r.seed) && Array.isArray(r.events) && r.events.length === 7 && typeof r.date === 'string').slice(0, 20); } catch { /* Storage can be disabled without disabling the simulator. */ }
 let scene: MachineScene | undefined, snapshot: Snapshot | undefined, running = false, paused = false, busy = false, sorted = false, sound = true, recorded = false, replaying = false, fatalError=false, panMode=false;
-let id = 0, blueStart = 0, seedPhase = 0, accumulator = 0, lastTime = performance.now(), lastEventCount = 0;
+let id = 0, blueStart = 0, seedPhase = 0, accumulator = 0, lastTime = performance.now(), lastEventCount = 0, previousPhase: Phase | undefined;
+function selectView(name: string) {
+  scene?.view(name);
+  document.querySelectorAll<HTMLElement>('[data-view]').forEach(button=>button.classList.toggle('active',button.dataset.view===name));
+}
 const soundscape = new DrawSoundscape(description => { el('sound').title = description; });
 const worker = new Worker(new URL('./physics.worker.ts', import.meta.url), { type: 'module' });
 const phases: Record<Phase, string> = { ready: '待机', loading: '准备球组', mixing: '机械搅拌', red: '红球出球', blue: '蓝球出球', complete: '开奖完成', failed: '本场未完成' };
@@ -44,7 +48,7 @@ function renderHistory() {
 function initialize(seed = crypto.getRandomValues(new Uint32Array(1))[0], replay = false) {
   soundscape.setState('idle'); soundscape.setSuspended(document.hidden);
   el('result-view').classList.add('hidden');scene?.view('all');document.querySelectorAll('[data-view]').forEach(e=>e.classList.toggle('active',(e as HTMLElement).dataset.view==='all'));
-  id++; running = false; paused = false; busy = true; snapshot = undefined; recorded = false; replaying = replay; blueStart = 0; lastEventCount = 0; accumulator = 0;
+  id++; running = false; paused = false; busy = true; snapshot = undefined; recorded = false; replaying = replay; blueStart = 0; lastEventCount = 0; accumulator = 0; previousPhase=undefined;
   el('pause').textContent='暂停';el('event-display').textContent='等待开始';
   el('elapsed').textContent='00:00';el('studio-state').textContent='DRAWING LAB / 准备中';el('status').textContent='正在准备本场球组…';el('run-indicator').classList.remove('running');
   seedPhase = randomGenerator(seed)() * 6;
@@ -68,6 +72,11 @@ worker.onmessage = ({data}) => {
   }
   if (!blueStart && s.events.filter(e=>e.color==='red').length === 6) blueStart = s.events.filter(e=>e.color==='red')[5].tick + 180;
   scene?.update(s,seedPhase,blueStart);
+  if(s.phase!==previousPhase) {
+    if(s.phase==='blue') selectView('blue');
+    if(s.phase==='complete') selectView('tray');
+    previousPhase=s.phase;
+  }
   el('elapsed').textContent = `${pad(Math.floor(s.tick/120/60))}:${pad(Math.floor(s.tick/120)%60)}`;
   el('studio-state').textContent = `DRAWING LAB / ${phases[s.phase]}`;
   el('run-indicator').classList.toggle('running',running && !paused);
@@ -100,7 +109,7 @@ el('copy').addEventListener('click',async()=>{if(snapshot?.phase!=='complete')re
 el('sound').addEventListener('click',()=>{sound=!sound;el('sound').textContent=`声音：${sound?'开':'关'}`;el('sound').setAttribute('aria-pressed',String(sound));soundscape.setEnabled(sound);if(sound)void soundscape.unlock();});
 el('drag-mode').addEventListener('click',()=>{panMode=!panMode;scene?.setDragMode(panMode);el('drag-mode').textContent=panMode?'旋转':'移动';el('drag-mode').setAttribute('aria-pressed',String(panMode));el('drag-mode').title=panMode?'当前拖动移动观看位置，点击切换旋转':'切换为拖动移动观看位置';});
 el('fullscreen').addEventListener('click',async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await el('studio').requestFullscreen();}catch{toast('此浏览器不支持全屏，可横屏观看。');}});
-document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(button=>button.addEventListener('click',()=>{scene?.view(button.dataset.view!);document.querySelectorAll('[data-view]').forEach(e=>e.classList.toggle('active',e===button));}));
+document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(button=>button.addEventListener('click',()=>selectView(button.dataset.view!)));
 document.addEventListener('visibilitychange',()=>{soundscape.setSuspended(document.hidden||paused);accumulator=0;lastTime=performance.now();});
 drawNumbers([]);renderHistory();
 try {scene=new MachineScene(el('stage'));initialize();} catch {el('loading').classList.add('hidden'); const error=document.createElement('div');error.className='stage-error';error.innerHTML='<strong>三维画面暂时无法启动</strong><p>请使用支持 WebGL 的浏览器，并开启图形加速后刷新页面。</p>';el('stage').append(error);fail('当前浏览器未能启动三维图形，请更换浏览器或开启图形加速。');}
