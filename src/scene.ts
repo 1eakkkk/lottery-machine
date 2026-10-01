@@ -9,9 +9,7 @@ export class MachineScene {
   outletGates:THREE.Mesh[]=[];
   private currentView = 'all';
   private resultRack = new THREE.Group();
-  private resultMoves: { ball: THREE.Mesh; from: THREE.Vector3; rotation: THREE.Quaternion; to: THREE.Vector3 }[] = [];
-  private resultAnimationStart = 0;
-  private resultShown = false;
+  private resultMoves: { ball: THREE.Mesh; from: THREE.Vector3; rotation: THREE.Quaternion; to: THREE.Vector3; start: number }[] = [];
   private reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   private displayRotation = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1,1,0).normalize(), new THREE.Vector3(0,0,1));
   observer: ResizeObserver; initialPosition = new THREE.Vector3(0, 4.7, 9.5);
@@ -45,7 +43,7 @@ export class MachineScene {
     this.observer = new ResizeObserver(() => this.resize()); this.observer.observe(container); this.resize();
   }
   private createResultRack() {
-    this.scene.add(this.resultRack); this.resultRack.visible = false;
+    this.scene.add(this.resultRack);
     const steel = this.material('#bfc5c2');
     this.mesh(new THREE.BoxGeometry(2.65,.07,.40),steel,0,.46,1.3,this.resultRack);
     for(const x of [-1.14,1.14]) this.mesh(new THREE.BoxGeometry(.055,.42,.12),steel,x,.23,1.3,this.resultRack);
@@ -181,7 +179,8 @@ export class MachineScene {
     if(Math.abs(previousAspect-this.camera.aspect)>.4||this.camera.position.equals(this.initialPosition)) this.view(this.currentView);
   }
   update(s: Snapshot, seedPhase: number, blueStart: number) {
-    if(s.phase!=='complete') {this.resultShown=false;this.resultRack.visible=false;this.resultMoves=[];}
+    // Each physically detected ball takes its slot immediately; existing slots never reorder.
+    if(s.events.length<this.resultMoves.length || s.phase==='ready') this.resultMoves=[];
     this.balls.forEach((ball, i) => {
       const j = i * 8; ball.position.set(s.balls[j], s.balls[j + 1], s.balls[j + 2]); ball.quaternion.set(s.balls[j + 3], s.balls[j + 4], s.balls[j + 5], s.balls[j + 6]);
     });
@@ -196,17 +195,17 @@ export class MachineScene {
     }));
     this.gates.forEach((gate, i) => { gate.visible = !s.gate[i]; });
     this.outletGates.forEach((gate,i)=>{gate.visible=!s.outlet[i];});
-    if(s.phase==='complete'&&!this.resultShown){
-      this.resultShown=true;this.resultRack.visible=true;this.resultAnimationStart=performance.now();
-      this.resultMoves=s.events.map((event,index)=>{
+    for(let index=this.resultMoves.length;index<s.events.length;index++) {
+        const event=s.events[index];
         const ball=this.balls[(event.color==='red'?0:33)+event.number-1];
-        return {ball,from:ball.position.clone(),rotation:ball.quaternion.clone(),to:new THREE.Vector3(index<6?-.93+index*.31:1.03,.588,1.3)};
-      });
+        this.resultMoves.push({ball,from:ball.position.clone(),rotation:ball.quaternion.clone(),to:new THREE.Vector3(index<6?-.93+index*.31:1.03,.588,1.3),start:performance.now()});
     }
   }
   render() {
-    const progress=this.reducedMotion?1:Math.min(1,(performance.now()-this.resultAnimationStart)/900), eased=1-(1-progress)**3;
-    for(const move of this.resultMoves){move.ball.position.lerpVectors(move.from,move.to,eased);move.ball.quaternion.slerpQuaternions(move.rotation,this.displayRotation,eased);}
+    for(const move of this.resultMoves){
+      const progress=this.reducedMotion?1:Math.min(1,(performance.now()-move.start)/900), eased=1-(1-progress)**3;
+      move.ball.position.lerpVectors(move.from,move.to,eased);move.ball.quaternion.slerpQuaternions(move.rotation,this.displayRotation,eased);
+    }
     this.controls.update(); this.renderer.render(this.scene, this.camera);
   }
   view(name: string) {

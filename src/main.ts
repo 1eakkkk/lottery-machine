@@ -74,6 +74,7 @@ worker.onmessage = ({data}) => {
   document.querySelectorAll<HTMLElement>('[data-phase]').forEach(e=>e.classList.toggle('active',e.dataset.phase===s.phase));
   el('seed-display').textContent = String(s.seed); el('tick-display').textContent = String(s.tick);
   if (s.events.length !== lastEventCount) {
+    if(s.events.length>0) el('result-view').classList.remove('hidden');
     drawNumbers(s.events); for (const event of s.events.slice(lastEventCount)) soundscape.ball(event.color); lastEventCount = s.events.length;
     el('event-display').textContent = s.events.map(e=>`${e.color==='red'?'红':'蓝'} ${pad(e.number)} @ ${e.tick}`).join(' / ');
     el('status').textContent = `已抽出 ${s.events.filter(e=>e.color==='red').length} / 6 个红球，${s.events.filter(e=>e.color==='blue').length} / 1 个蓝球。`;
