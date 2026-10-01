@@ -1,17 +1,13 @@
 {
   "name": "lottery-machine",
   "version": "0.1.0",
-  "description": "",
-  "main": "index.js",
+  "description": "双色球三维机械开奖模拟器",
   "scripts": {
     "test": "tsx scripts/verify-physics.ts",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "type": "module",
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",
@@ -22,5 +18,6 @@
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.1"
-  }
+  },
+  "private": true
 }

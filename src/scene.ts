@@ -47,10 +47,14 @@ export class MachineScene {
   machine(x: number, color: string, count: number, name: string) {
     const steel = this.material('#bfc5c2'), dark = this.material('#333a38'), bronze = this.material('#b8aa81');
     const white = this.material('#dcded8', 0.2);
-    this.mesh(new THREE.CylinderGeometry(0.94, 1.03, 0.14, 64), dark, x, 0.09, 0);
-    this.mesh(new THREE.CylinderGeometry(0.67, 0.82, 0.21, 64), steel, x, 0.26, 0);
-    this.mesh(new THREE.CylinderGeometry(0.43, 0.64, 1.25, 64), white, x, 0.97, -0.13);
-    this.mesh(new THREE.CylinderGeometry(0.79, 0.52, 0.23, 64), steel, x, 1.70, 0);
+    this.mesh(new THREE.BoxGeometry(1.40,.10,.94),steel,x,.12,-.1);
+    this.mesh(new THREE.BoxGeometry(1.32,1.32,.82),white,x,.84,-.1);
+    this.mesh(new THREE.BoxGeometry(1.18,1.08,.015),this.material('#234771',.15),x,.82,.319);
+    this.mesh(new THREE.BoxGeometry(1.48,.085,.82),steel,x,1.55,-.1);
+    for(const sx of [-1,1])for(const sz of [-1,1]){
+      this.mesh(new THREE.CylinderGeometry(.055,.055,.12,16),dark,x+sx*.55,.055,-.1+sz*.34).rotation.z=Math.PI/2;
+      this.mesh(new THREE.CylinderGeometry(.025,.025,.34,12),steel,x+sx*.57,1.74,sz*.27);
+    }
     const radius = Math.sqrt(CHAMBER_RADIUS ** 2 - (FLOOR_Y - CENTER_Y) ** 2);
     this.ring(radius, x, FLOOR_Y, 0, bronze);
     const glass = new THREE.MeshPhysicalMaterial({ color: '#d5e4df', metalness: 0, roughness: 0.08, transparent: true, opacity: 0.065, side: THREE.DoubleSide, depthWrite: false });
@@ -84,7 +88,8 @@ export class MachineScene {
     this.outletGates.push(this.mesh(new THREE.CylinderGeometry(PORT_RADIUS+.02,PORT_RADIUS+.02,.036,32),dark,x,FLOOR_Y-.26,PORT_Z));
     this.mesh(new THREE.BoxGeometry(1.5, 0.05, 0.44), steel, x, 0.63, PORT_Z).rotation.z=.08;
     for (const side of [-1, 1]) this.mesh(new THREE.BoxGeometry(1.5, 0.22, 0.05), glass.clone(), x, 0.76, PORT_Z + side * 0.22);
-    const badge = this.mesh(new THREE.PlaneGeometry(0.71, 0.18), new THREE.MeshBasicMaterial({ map: this.textTexture(name, '#eff3ea', '#303935') }), x, 1.31, 0.34); badge.rotation.x = -0.12;
+    this.mesh(new THREE.PlaneGeometry(.88,.22),new THREE.MeshBasicMaterial({map:this.textTexture('一刻开奖','#ffffff','#234771')}),x,1.02,.34);
+    this.mesh(new THREE.PlaneGeometry(.70,.18),new THREE.MeshBasicMaterial({map:this.textTexture(name,'#dce7f1','#234771')}),x,.82,.34);
     for (let i = 0; i < count; i++) {
       const ball = this.mesh(new THREE.SphereGeometry(BALL_RADIUS, 18, 12), new THREE.MeshStandardMaterial({ color, roughness: 0.24, metalness: 0.07 }), x, 2.8, 0);
       const labelCanvas=document.createElement('canvas');labelCanvas.width=128;labelCanvas.height=128;
