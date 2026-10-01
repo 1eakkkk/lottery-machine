@@ -1,8 +1,10 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-export const MODEL_VERSION = 'ssq-mechanical-v1';
+export const MODEL_VERSION = 'ssq-mechanical-v2';
 export const DT = 1 / 120, BALL_RADIUS = 0.082, CHAMBER_RADIUS = 1.08, CENTER_Y = 2.7, FLOOR_Y = 1.94;
 export const PORT_Z = 0.48, PORT_RADIUS = 0.158, ROTOR_Y = 2.08, ROTOR_X = 0.30, ROTOR_Z = 0.24, ANGULAR_SPEED = 8.0;
 export const TUBE_RADIUS=.106;
+// A narrow, inclined receiving lane: balls roll from the outlet toward the end stop.
+export const TRAY = { centerX: -.5, halfLength: .9, halfWidth: .095, y: .63, slope: .10, wallY: .83, wallHalfHeight: .175 };
 export type Phase = 'ready' | 'loading' | 'mixing' | 'red' | 'blue' | 'complete' | 'failed';
 export type DrawEvent = { color: 'red' | 'blue'; number: number; tick: number };
 export type Snapshot = { tick: number; phase: Phase; gate: [boolean, boolean]; outlet: [boolean, boolean]; balls: number[]; events: DrawEvent[]; seed: number; error?: string };
@@ -65,10 +67,10 @@ class Chamber {
     this.outletGate=world.createCollider(RAPIER.ColliderDesc.cylinder(.018,PORT_RADIUS+.02).setTranslation(0,FLOOR_Y-.26,PORT_Z),fixed);
     const tube=tubeGeometry();world.createCollider(RAPIER.ColliderDesc.trimesh(tube.vertices,tube.indices).setFriction(.1),fixed);
     for (const side of [-1, 1]) {
-      world.createCollider(RAPIER.ColliderDesc.cuboid(0.75, 0.11, 0.025).setTranslation(0, 0.76, PORT_Z + side * 0.22), fixed);
-      world.createCollider(RAPIER.ColliderDesc.cuboid(0.025, 0.11, 0.22).setTranslation(side * 0.75, 0.76, PORT_Z), fixed);
+      world.createCollider(RAPIER.ColliderDesc.cuboid(TRAY.halfLength+.025, TRAY.wallHalfHeight, .025).setTranslation(TRAY.centerX, TRAY.wallY, PORT_Z + side * (TRAY.halfWidth+.025)).setRestitution(0), fixed);
+      world.createCollider(RAPIER.ColliderDesc.cuboid(.025, TRAY.wallHalfHeight, TRAY.halfWidth).setTranslation(TRAY.centerX+side*(TRAY.halfLength+.025), TRAY.wallY, PORT_Z).setRestitution(0), fixed);
     }
-    world.createCollider(RAPIER.ColliderDesc.cuboid(0.75, 0.025, 0.22).setTranslation(0, 0.63, PORT_Z).setRotation({x:0,y:0,z:Math.sin(.04),w:Math.cos(.04)}).setFriction(0.06), fixed);
+    world.createCollider(RAPIER.ColliderDesc.cuboid(TRAY.halfLength, .025, TRAY.halfWidth).setTranslation(TRAY.centerX, TRAY.y, PORT_Z).setRotation({x:0,y:0,z:Math.sin(TRAY.slope/2),w:Math.cos(TRAY.slope/2)}).setFriction(.18).setRestitution(0), fixed);
     // Counter-rotating paddle assemblies: momentum is imparted by contacts.
     for (const side of [-1, 1]) {
       const rotor = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(offset + side * ROTOR_X, ROTOR_Y, ROTOR_Z));

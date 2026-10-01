@@ -23,3 +23,5 @@ footer{max-width:1240px;margin:auto;border-top:1px solid var(--line);padding:25p
 @media(max-width:360px){.studio-bottom{align-items:flex-start;gap:8px;flex-wrap:wrap}.studio-bottom>div:last-child{margin-left:auto}.views button{padding:6px 8px}.stage{height:480px}}
 
 @media(max-width:700px){.studio-bottom{justify-content:center}.studio-bottom>div:last-child{display:flex;gap:6px;margin-left:0}.views{justify-content:center}.studio-bottom .round-control{min-height:34px}}
+
+.views{max-width:100%;box-sizing:border-box;flex-wrap:wrap}

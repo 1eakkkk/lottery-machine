@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { numberedBallSurface } from './ball-label';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { BALL_RADIUS, CHAMBER_RADIUS, CENTER_Y, FLOOR_Y, PORT_Z, PORT_RADIUS,TUBE_RADIUS, ROTOR_Y, ROTOR_X, ROTOR_Z, ANGULAR_SPEED, DT, floorGeometry,tubeGeometry, type Snapshot } from './physics';
+import { BALL_RADIUS, CHAMBER_RADIUS, CENTER_Y, FLOOR_Y, PORT_Z, PORT_RADIUS,TUBE_RADIUS, TRAY, ROTOR_Y, ROTOR_X, ROTOR_Z, ANGULAR_SPEED, DT, floorGeometry,tubeGeometry, type Snapshot } from './physics';
 
 export class MachineScene {
   renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); camera: THREE.PerspectiveCamera; controls: OrbitControls;
@@ -10,6 +10,7 @@ export class MachineScene {
   private currentView = 'all';
   private resultRack = new THREE.Group();
   private resultMoves: { ball: THREE.Mesh; from: THREE.Vector3; rotation: THREE.Quaternion; to: THREE.Vector3; start: number }[] = [];
+  private resultShown = false;
   private reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   private displayRotation = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1,1,0).normalize(), new THREE.Vector3(0,0,1));
   observer: ResizeObserver; initialPosition = new THREE.Vector3(0, 4.7, 9.5);
@@ -43,7 +44,7 @@ export class MachineScene {
     this.observer = new ResizeObserver(() => this.resize()); this.observer.observe(container); this.resize();
   }
   private createResultRack() {
-    this.scene.add(this.resultRack);
+    this.scene.add(this.resultRack); this.resultRack.visible=false;
     const steel = this.material('#bfc5c2');
     this.mesh(new THREE.BoxGeometry(2.65,.07,.40),steel,0,.46,1.3,this.resultRack);
     for(const x of [-1.14,1.14]) this.mesh(new THREE.BoxGeometry(.055,.42,.12),steel,x,.23,1.3,this.resultRack);
@@ -147,8 +148,12 @@ export class MachineScene {
     for (const y of [1.02, 1.8]) this.ring(TUBE_RADIUS + 0.01, x, y, PORT_Z, bronze);
     this.gates.push(this.mesh(new THREE.CylinderGeometry(PORT_RADIUS + 0.02, PORT_RADIUS + 0.02, 0.036, 32), dark, x, FLOOR_Y - 0.03, PORT_Z));
     this.outletGates.push(this.mesh(new THREE.CylinderGeometry(PORT_RADIUS+.02,PORT_RADIUS+.02,.036,32),dark,x,FLOOR_Y-.26,PORT_Z));
-    this.mesh(new THREE.BoxGeometry(1.5, 0.05, 0.44), steel, x, 0.63, PORT_Z).rotation.z=.08;
-    for (const side of [-1, 1]) this.mesh(new THREE.BoxGeometry(1.5, 0.22, 0.05), glass.clone(), x, 0.76, PORT_Z + side * 0.22);
+    this.mesh(new THREE.BoxGeometry(TRAY.halfLength*2, .05, TRAY.halfWidth*2), steel, x+TRAY.centerX, TRAY.y, PORT_Z).rotation.z=TRAY.slope;
+    const railGlass=glass.clone();railGlass.opacity=.23;
+    for (const side of [-1, 1]) {
+      this.mesh(new THREE.BoxGeometry(TRAY.halfLength*2+.05, TRAY.wallHalfHeight*2, .05), railGlass, x+TRAY.centerX, TRAY.wallY, PORT_Z+side*(TRAY.halfWidth+.025));
+      this.mesh(new THREE.BoxGeometry(.05, TRAY.wallHalfHeight*2, TRAY.halfWidth*2), steel, x+TRAY.centerX+side*(TRAY.halfLength+.025), TRAY.wallY, PORT_Z);
+    }
     this.mesh(new THREE.PlaneGeometry(.88,.22),new THREE.MeshBasicMaterial({map:this.textTexture('一刻开奖','#ffffff','#234771')}),x,1.02,.34);
     this.mesh(new THREE.PlaneGeometry(.70,.18),new THREE.MeshBasicMaterial({map:this.textTexture(name,'#dce7f1','#234771')}),x,.82,.34);
     const ballGeometry = new THREE.SphereGeometry(BALL_RADIUS, 32, 24);
@@ -179,8 +184,8 @@ export class MachineScene {
     if(Math.abs(previousAspect-this.camera.aspect)>.4||this.camera.position.equals(this.initialPosition)) this.view(this.currentView);
   }
   update(s: Snapshot, seedPhase: number, blueStart: number) {
-    // Each physically detected ball takes its slot immediately; existing slots never reorder.
-    if(s.events.length<this.resultMoves.length || s.phase==='ready') this.resultMoves=[];
+    // During the draw, every mesh follows its physical receiving lane without relocation.
+    if(s.phase!=='complete') {this.resultMoves=[];this.resultShown=false;this.resultRack.visible=false;}
     this.balls.forEach((ball, i) => {
       const j = i * 8; ball.position.set(s.balls[j], s.balls[j + 1], s.balls[j + 2]); ball.quaternion.set(s.balls[j + 3], s.balls[j + 4], s.balls[j + 5], s.balls[j + 6]);
     });
@@ -195,10 +200,13 @@ export class MachineScene {
     }));
     this.gates.forEach((gate, i) => { gate.visible = !s.gate[i]; });
     this.outletGates.forEach((gate,i)=>{gate.visible=!s.outlet[i];});
-    for(let index=this.resultMoves.length;index<s.events.length;index++) {
+    if(s.phase==='complete'&&!this.resultShown) {
+      this.resultShown=true;this.resultRack.visible=true;
+      for(let index=0;index<s.events.length;index++) {
         const event=s.events[index];
         const ball=this.balls[(event.color==='red'?0:33)+event.number-1];
         this.resultMoves.push({ball,from:ball.position.clone(),rotation:ball.quaternion.clone(),to:new THREE.Vector3(index<6?-.93+index*.31:1.03,.588,1.3),start:performance.now()});
+      }
     }
   }
   render() {
@@ -211,6 +219,7 @@ export class MachineScene {
   view(name: string) {
     this.currentView = name;
     if (name === 'results') {this.camera.position.set(0,1.4,1.3+Math.max(2.8,3/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));this.controls.target.set(0,.588,1.3);}
+    else if (name === 'tray') {this.camera.position.set(-1.95,1.5,PORT_Z+Math.max(3,2.4/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));this.controls.target.set(-1.95,.8,PORT_Z);}
     else if (name === 'red') { this.camera.position.set(-1.45, 3.5, 4.4); this.controls.target.set(-1.45, 2.5, 0); }
     else if (name === 'blue') { this.camera.position.set(1.45, 3.5, 4.4); this.controls.target.set(1.45, 2.5, 0); }
     else {

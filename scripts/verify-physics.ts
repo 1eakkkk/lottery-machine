@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {mkdirSync,writeFileSync} from 'node:fs';
-import { DrawSimulation, initializePhysics, MODEL_VERSION, randomGenerator } from '../src/physics.ts';
+import { DrawSimulation, initializePhysics, MODEL_VERSION, randomGenerator, TRAY, PORT_Z, BALL_RADIUS } from '../src/physics.ts';
 await initializePhysics();
 const count = Number(process.env.DRAW_TEST_COUNT || 12);
 const offset=Number(process.env.DRAW_TEST_OFFSET||0);
@@ -15,6 +15,19 @@ for (let i = offset; i < count; i++) {
   const red = s.events.filter(e => e.color === 'red'), blue = s.events.filter(e => e.color === 'blue');
   assert.equal(red.length, 6); assert.equal(new Set(red.map(e => e.number)).size, 6); assert.equal(blue.length, 1);
   assert(red.every(e => e.number >= 1 && e.number <= 33)); assert(blue[0].number >= 1 && blue[0].number <= 16); assert(blue[0].tick > red[5].tick);
+  let previousX = -Infinity;
+  for (const event of s.events) {
+    const offset=event.color==='red'?-1.45:1.45;
+    const j=((event.color==='red'?0:33)+event.number-1)*8;
+    const [x,y,z]=s.balls.slice(j,j+3);
+    assert(Math.abs(z-PORT_Z)<TRAY.halfWidth-BALL_RADIUS+.004,'Selected ball must stay in the single-file lane');
+    assert(x-offset>TRAY.centerX-TRAY.halfLength&&x-offset<TRAY.centerX+TRAY.halfLength,'Selected ball must stay between lane end stops');
+    assert(y>.5&&y<1,'Selected ball must rest on the receiving tray');
+    if(event.color==='red') {
+      assert(x>previousX+BALL_RADIUS*1.7,'Red balls must retain extraction order along the lane');
+      previousX=x;
+    }
+  }
   totalTicks += s.tick;
   console.log(`Draw ${i+1}/${count}: ${s.tick/120}s, ${s.events.map(e=>e.number).join(',')}`);
 }
