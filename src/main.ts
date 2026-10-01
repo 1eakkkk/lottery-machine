@@ -49,6 +49,7 @@ function ping() {
 function initialize(seed = crypto.getRandomValues(new Uint32Array(1))[0], replay = false) {
   id++; running = false; paused = false; busy = true; snapshot = undefined; recorded = false; replaying = replay; blueStart = 0; lastEventCount = 0; accumulator = 0;
   el('pause').textContent='暂停';el('event-display').textContent='等待开始';
+  el('elapsed').textContent='00:00';el('studio-state').textContent='DRAWING LAB / 准备中';el('status').textContent='正在准备本场球组…';el('run-indicator').classList.remove('running');
   seedPhase = randomGenerator(seed)() * 6;
   el('start').textContent = '准备中…'; (el<HTMLButtonElement>('start')).disabled = true;
   el('pause').classList.add('hidden'); el('reset').classList.add('hidden'); el<HTMLButtonElement>('copy').disabled = true;
@@ -90,6 +91,7 @@ worker.onmessage = ({data}) => {
       try {localStorage.setItem(STORAGE,JSON.stringify(history));} catch {el('status').textContent='开奖完成；浏览器未允许保存本机历史。';} renderHistory();
     }
   }
+  if (paused && running) el('status').textContent='已暂停，物理步骤与球体状态保持。';
   if (s.phase==='failed') {fail(s.error || '本场未完成，请重新开始。'); el<HTMLButtonElement>('copy').disabled=true;}
 };
 el('start').addEventListener('click',()=>{if(fatalError)return location.reload(); if (snapshot?.phase==='ready') begin(); else {initialize(); const targetId=id; const listener=({data}:MessageEvent)=>{ if(data.id===targetId&&data.snapshot?.phase==='ready'){worker.removeEventListener('message',listener);begin();} }; worker.addEventListener('message',listener); } });

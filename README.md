@@ -2,7 +2,7 @@
 
 双色球三维机械开奖模拟网站。Rapier 3D WASM 计算球体和机器的真实碰撞，Three.js 显示透明球仓、双向旋转部件和底部出球通道。
 
-- 网站目标地址：https://lottery.1eak.cool
+- 已上线：https://lottery.1eak.cool
 - 公开仓库：https://github.com/1eakkkk/lottery-machine
 - 完整产品与实施方案：[PROJECT_PLAN.md](PROJECT_PLAN.md)
 
@@ -36,7 +36,7 @@ npx wrangler deploy
 
 运行前需要登录具有目标账户和域名权限的 Cloudflare 账号。`routes` 只连接 `lottery.1eak.cool`。源码和依赖锁文件应一同提交，凭据不能提交到仓库。
 
-GitHub Actions 负责构建与物理检查。Cloudflare 的 GitHub 构建集成可以用于推送后自动部署；该集成的实际连接状态以交付记录为准，配置文件本身不表示已完成账户连接。
+GitHub Actions 负责构建与物理检查。Cloudflare 已连接该仓库的 main 分支，推送后运行 `npm test && npm run build` 并自动部署；已验证一次真实提交触发成功发布。预览分支部署关闭。验收范围和实际限制见 [DELIVERY.md](DELIVERY.md)。
 
 ## 物理模型的边界
 
