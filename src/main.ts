@@ -7,7 +7,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
 document.querySelector('#app')!.innerHTML = `
 <header><a class="brand" href="/"><span class="brand-icon">7</span>一刻开奖</a><nav class="nav"><a class="current" href="#studio">开奖实验室</a><a href="#about">工作原理</a><a class="github-nav" href="https://github.com/1eakkkk/lottery-machine" target="_blank" rel="noopener">GitHub ↗</a></nav></header>
 <main><section class="intro"><div><div class="eyebrow">THE MOMENT OF CHANCE</div><h1>让偶然，真实发生。</h1><p>启动一场双色球开奖，观察每一次碰撞如何成为结果。</p></div><span class="mode">双色球 · 6 + 1</span></section>
-<section class="studio" id="studio" aria-label="三维开奖实验室"><div class="studio-top"><span class="studio-label"><i id="run-indicator"></i><span id="studio-state">DRAWING LAB / 待机</span></span><span class="studio-meta" id="elapsed">00:00</span></div><div class="stage" id="stage"><div class="loading-overlay" id="loading"><span></span>正在准备三维机器与物理引擎…</div></div><div class="studio-bottom"><div class="views" role="group" aria-label="镜头选择"><button class="active" data-view="all">全景</button><button data-view="red">红球机</button><button data-view="blue">蓝球机</button></div><span class="studio-hint">拖动旋转 · 滚动缩放</span><div><button class="round-control" id="sound" aria-pressed="true" title="背景音乐、机械音效与出球提示">声音：开</button> <button class="round-control" id="fullscreen">全屏</button></div></div></section>
+<section class="studio" id="studio" aria-label="三维开奖实验室"><div class="studio-top"><span class="studio-label"><i id="run-indicator"></i><span id="studio-state">DRAWING LAB / 待机</span></span><span class="studio-meta" id="elapsed">00:00</span></div><div class="stage" id="stage"><div class="loading-overlay" id="loading"><span></span>正在准备三维机器与物理引擎…</div></div><div class="studio-bottom"><div class="views" role="group" aria-label="镜头选择"><button class="active" data-view="all">全景</button><button data-view="red">红球机</button><button data-view="blue">蓝球机</button><button class="hidden" id="result-view" data-view="results">结果</button></div><span class="studio-hint">拖动旋转 · 滚轮指向缩放 · 右键移动</span><div><button class="round-control" id="drag-mode" aria-pressed="false" title="切换为拖动移动观看位置">移动</button> <button class="round-control" id="sound" aria-pressed="true" title="背景音乐、机械音效与出球提示">声音：开</button> <button class="round-control" id="fullscreen">全屏</button></div></div></section>
 <div class="progress" aria-label="开奖流程"><span data-phase="loading"><b>1</b>准备球组</span><em></em><span data-phase="mixing"><b>2</b>机械搅拌</span><em></em><span data-phase="red"><b>3</b>红球出球</span><em></em><span data-phase="blue"><b>4</b>蓝球出球</span><em></em><span data-phase="complete"><b>5</b>完成</span></div>
 <section class="result-panel"><div><div class="result-head">本场模拟结果 <small id="result-order">按出球顺序</small></div><div class="numbers" id="numbers" aria-label="本场开奖号码"></div><div class="result-note"><span>33 个红球 · 16 个蓝球 · 区内不放回</span><button id="sort">切换为升序</button></div></div><div><div class="actions"><button class="primary" id="start" disabled>准备中…</button><button class="secondary hidden" id="pause">暂停</button><button class="secondary hidden" id="reset">重新开始</button><button class="secondary" id="copy" disabled>复制结果</button></div></div></section>
 <p class="status-line" id="status" role="status" aria-live="polite">每次开奖独立运行，结果由球体通过出球口的物理过程产生。</p>
@@ -18,7 +18,7 @@ type RecordItem = { seed: number; model: string; date: string; events: DrawEvent
 const STORAGE = '1eak-draw-history-v1';
 let history: RecordItem[] = [];
 try { const saved = JSON.parse(localStorage.getItem(STORAGE) || '[]'); if (Array.isArray(saved)) history = saved.filter(r => r && r.model === MODEL_VERSION && Number.isInteger(r.seed) && Array.isArray(r.events) && r.events.length === 7 && typeof r.date === 'string').slice(0, 20); } catch { /* Storage can be disabled without disabling the simulator. */ }
-let scene: MachineScene | undefined, snapshot: Snapshot | undefined, running = false, paused = false, busy = false, sorted = false, sound = true, recorded = false, replaying = false, fatalError=false;
+let scene: MachineScene | undefined, snapshot: Snapshot | undefined, running = false, paused = false, busy = false, sorted = false, sound = true, recorded = false, replaying = false, fatalError=false, panMode=false;
 let id = 0, blueStart = 0, seedPhase = 0, accumulator = 0, lastTime = performance.now(), lastEventCount = 0;
 const soundscape = new DrawSoundscape(description => { el('sound').title = description; });
 const worker = new Worker(new URL('./physics.worker.ts', import.meta.url), { type: 'module' });
@@ -43,6 +43,7 @@ function renderHistory() {
 }
 function initialize(seed = crypto.getRandomValues(new Uint32Array(1))[0], replay = false) {
   soundscape.setState('idle'); soundscape.setSuspended(document.hidden);
+  el('result-view').classList.add('hidden');scene?.view('all');document.querySelectorAll('[data-view]').forEach(e=>e.classList.toggle('active',(e as HTMLElement).dataset.view==='all'));
   id++; running = false; paused = false; busy = true; snapshot = undefined; recorded = false; replaying = replay; blueStart = 0; lastEventCount = 0; accumulator = 0;
   el('pause').textContent='暂停';el('event-display').textContent='等待开始';
   el('elapsed').textContent='00:00';el('studio-state').textContent='DRAWING LAB / 准备中';el('status').textContent='正在准备本场球组…';el('run-indicator').classList.remove('running');
@@ -79,7 +80,7 @@ worker.onmessage = ({data}) => {
   } else if (s.phase==='mixing') el('status').textContent = '双转盘逆向旋转中，球体通过碰撞充分搅拌…';
   else if (s.phase==='loading') el('status').textContent = '球组落入仓内，正在稳定球体…';
   if (s.phase==='complete') {
-    soundscape.setState('complete');
+    soundscape.setState('complete');el('result-view').classList.remove('hidden');
     running = false; el('start').textContent = '再开一场'; el<HTMLButtonElement>('start').disabled = false; el<HTMLButtonElement>('copy').disabled = false;
     el('pause').classList.add('hidden'); el('reset').classList.add('hidden'); el('run-indicator').classList.remove('running');
     el('status').textContent = replaying ? '回放完成，相同输入下重新运行了完整物理过程。' : '本场开奖完成。结果已保存在本机，可随时回放。';
@@ -97,6 +98,7 @@ el('pause').addEventListener('click',()=>{paused=!paused;soundscape.setSuspended
 el('sort').addEventListener('click',()=>{sorted=!sorted;drawNumbers(snapshot?.events||[]);el('sort').textContent=sorted?'切换为出球顺序':'切换为升序';el('result-order').textContent=sorted?'按号码升序':'按出球顺序';});
 el('copy').addEventListener('click',async()=>{if(snapshot?.phase!=='complete')return;const red=snapshot.events.filter(e=>e.color==='red').map(e=>e.number);if(sorted)red.sort((a,b)=>a-b);const text=`双色球模拟：${red.map(pad).join(' ')} + ${pad(snapshot.events.find(e=>e.color==='blue')!.number)}\nhttps://lottery.1eak.cool/`;try{await navigator.clipboard.writeText(text);toast('模拟结果已复制');}catch{toast('浏览器未允许复制，请手动选择号码。');}});
 el('sound').addEventListener('click',()=>{sound=!sound;el('sound').textContent=`声音：${sound?'开':'关'}`;el('sound').setAttribute('aria-pressed',String(sound));soundscape.setEnabled(sound);if(sound)void soundscape.unlock();});
+el('drag-mode').addEventListener('click',()=>{panMode=!panMode;scene?.setDragMode(panMode);el('drag-mode').textContent=panMode?'旋转':'移动';el('drag-mode').setAttribute('aria-pressed',String(panMode));el('drag-mode').title=panMode?'当前拖动移动观看位置，点击切换旋转':'切换为拖动移动观看位置';});
 el('fullscreen').addEventListener('click',async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await el('studio').requestFullscreen();}catch{toast('此浏览器不支持全屏，可横屏观看。');}});
 document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(button=>button.addEventListener('click',()=>{scene?.view(button.dataset.view!);document.querySelectorAll('[data-view]').forEach(e=>e.classList.toggle('active',e===button));}));
 document.addEventListener('visibilitychange',()=>{soundscape.setSuspended(document.hidden||paused);accumulator=0;lastTime=performance.now();});
