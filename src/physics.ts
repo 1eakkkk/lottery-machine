@@ -1,4 +1,6 @@
 import RAPIER from '@dimforge/rapier3d-compat';
+import { GAMES, type GameId } from './games';
+import { airVelocity } from './airflow';
 export const MODEL_VERSION = 'ssq-mechanical-v2';
 export const DT = 1 / 120, BALL_RADIUS = 0.082, CHAMBER_RADIUS = 1.08, CENTER_Y = 2.7, FLOOR_Y = 1.94;
 export const PORT_Z = 0.48, PORT_RADIUS = 0.158, ROTOR_Y = 2.08, ROTOR_X = 0.30, ROTOR_Z = 0.24, ANGULAR_SPEED = 8.0;
@@ -45,12 +47,12 @@ export function tubeGeometry(){
   return {vertices:new Float32Array(vertices),indices:new Uint32Array(indices)};
 }
 type Ball = { body: RAPIER.RigidBody; number: number; selected: boolean };
-class Chamber {
+export class Chamber {
   balls: Ball[] = []; rotors: RAPIER.RigidBody[] = []; gate: RAPIER.Collider; outletGate:RAPIER.Collider;
   open = false; nextOpen = 0; events: DrawEvent[] = [];
   lockTick=-1;outletOpen=false;
   lastAngle = 0;
-  constructor(public world: RAPIER.World, public color: 'red' | 'blue', public offset: number, count: number, rng: () => number) {
+  constructor(public world: RAPIER.World, public color: 'red' | 'blue', public offset: number, count: number, rng: () => number, public airflow=false) {
     const fixed = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(offset, 0, 0)), shell = shellGeometry();
     world.createCollider(RAPIER.ColliderDesc.trimesh(shell.vertices, shell.indices).setFriction(0.2).setRestitution(0.48), fixed);
     // A tiled floor with an actual opening. No invisible attraction or chosen ball.
@@ -72,7 +74,7 @@ class Chamber {
     }
     world.createCollider(RAPIER.ColliderDesc.cuboid(TRAY.halfLength, .025, TRAY.halfWidth).setTranslation(TRAY.centerX, TRAY.y, PORT_Z).setRotation({x:0,y:0,z:Math.sin(TRAY.slope/2),w:Math.cos(TRAY.slope/2)}).setFriction(.18).setRestitution(0), fixed);
     // Counter-rotating paddle assemblies: momentum is imparted by contacts.
-    for (const side of [-1, 1]) {
+    for (const side of airflow?[]:[-1, 1]) {
       const rotor = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(offset + side * ROTOR_X, ROTOR_Y, ROTOR_Z));
       for (let blade = 0; blade < 6; blade++) {
         const a = blade * Math.PI / 3;
@@ -87,13 +89,29 @@ class Chamber {
     for (let i = 0; i < count; i++) {
       const layer = Math.floor(slots[i] / 12), cell = slots[i] % 12, x = (cell % 4 - 1.5) * 0.22 + (rng() - 0.5) * 0.02, z = (Math.floor(cell / 4) - 1) * 0.22 + (rng() - 0.5) * 0.02;
       const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(offset + x, 2.63 + layer * 0.2, z).setCcdEnabled(true).setLinearDamping(0.12).setAngularDamping(0.15).setCanSleep(false));
-      world.createCollider(RAPIER.ColliderDesc.ball(BALL_RADIUS).setMass(0.025).setFriction(0.24).setRestitution(0.66), body);
+      world.createCollider(RAPIER.ColliderDesc.ball(BALL_RADIUS).setMass(airflow?.005:.025).setFriction(airflow?.14:.24).setRestitution(airflow?.62:.66), body);
       this.balls.push({ body, number: i + 1, selected: false });
     }
   }
   setGate(open: boolean) { this.open = open; this.gate.setEnabled(!open); }
   advanceLock(tick:number){if(this.lockTick>=0&&tick>=this.lockTick+12){this.outletOpen=true;this.outletGate.setEnabled(false);}}
   drive(tick: number, moving: boolean, phase: number) {
+    if(this.airflow) {
+      for(const ball of this.balls) {
+        const body=ball.body;body.resetForces(true);
+        if(!moving||ball.selected) continue;
+        const p=body.translation();
+        // Once a ball is in the isolated outlet it falls under gravity, without jet force.
+        if(p.y<FLOOR_Y) continue;
+        const wind=airVelocity(p.x-this.offset,p.y-CENTER_Y,p.z,tick*DT,phase),v=body.linvel();
+        // The smaller rear ball group uses a lower blower setting.
+        if(this.color==='blue') {wind.x*=.7;wind.y*=.7;wind.z*=.7;}
+        const dx=wind.x-v.x,dy=wind.y-v.y,dz=wind.z-v.z;
+        const drag=.5*1.225*.47*Math.PI*BALL_RADIUS**2*Math.hypot(dx,dy,dz);
+        body.addForce({x:drag*dx,y:drag*dy,z:drag*dz},true);
+      }
+      return;
+    }
     if(moving)this.lastAngle=tick*DT*ANGULAR_SPEED+phase;
     this.rotors.forEach((rotor, i) => {
       const a = (i === 0 ? 1 : -1) * this.lastAngle;
@@ -114,26 +132,28 @@ class Chamber {
 }
 export class DrawSimulation {
   world: RAPIER.World; chambers: [Chamber, Chamber]; tick = 0; phase: Phase = 'ready'; started = false; blueStart = 0; error?: string; seedPhase: number;
-  constructor(public seed: number) {
+  constructor(public seed: number, public game:GameId='ssq') {
     const rng = randomGenerator(seed); this.seedPhase = rng() * 6;
     this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 }); this.world.timestep = DT; this.world.numSolverIterations = 8;
-    this.chambers = [new Chamber(this.world, 'red', -1.45, 33, rng), new Chamber(this.world, 'blue', 1.45, 16, rng)];
+    const config=GAMES[game];
+    this.chambers = [new Chamber(this.world, 'red', -1.45, config.counts[0], rng,config.mixing==='airflow'), new Chamber(this.world, 'blue', 1.45, config.counts[1], rng,config.mixing==='airflow')];
   }
   start() { this.started = true; this.phase = 'loading'; }
   step() {
     if (!this.started || this.phase === 'complete' || this.phase === 'failed') return;
     this.tick++; const [red, blue] = this.chambers;
+    const [redTarget,blueTarget]=GAMES[this.game].draws;
     if (this.tick === 240) this.phase = 'mixing';
     if (this.tick === 960) { this.phase = 'red'; red.nextOpen = this.tick; }
-    const redMoving = this.tick >= 240 && red.events.length < 6, blueMoving = this.blueStart > 0 && this.tick >= this.blueStart;
+    const redMoving = this.tick >= 240 && red.events.length < redTarget, blueMoving = this.blueStart > 0 && this.tick >= this.blueStart && (this.game==='ssq'||blue.events.length<blueTarget);
     red.drive(this.tick, redMoving, this.seedPhase); blue.drive(blueMoving ? this.tick - this.blueStart : 0, blueMoving, this.seedPhase + 1);
-    if (this.phase === 'red' && red.events.length < 6 && this.tick >= red.nextOpen&&red.lockTick<0) red.setGate(true);
-    if (this.phase === 'blue' && blue.events.length < 1 && this.tick >= blue.nextOpen&&blue.lockTick<0) blue.setGate(true);
+    if (this.phase === 'red' && red.events.length < redTarget && this.tick >= red.nextOpen&&red.lockTick<0) red.setGate(true);
+    if (this.phase === 'blue' && blue.events.length < blueTarget && this.tick >= blue.nextOpen&&blue.lockTick<0) blue.setGate(true);
     red.advanceLock(this.tick);blue.advanceLock(this.tick);
     this.world.step(); red.readCrossings(this.tick); blue.readCrossings(this.tick);
-    if (red.events.length === 6 && !this.blueStart) { this.blueStart = this.tick + 180; blue.nextOpen = this.blueStart + 720; this.phase = 'blue'; }
-    if (red.events.length > 6 || blue.events.length > 1) this.fail('出球机构出现连续出球，本场无效，请重新开始。');
-    if (blue.events.length === 1 && this.tick >= blue.events[0].tick + 180) this.phase = 'complete';
+    if (red.events.length === redTarget && !this.blueStart) { this.blueStart = this.tick + 180; blue.nextOpen = this.blueStart + 720; this.phase = 'blue'; }
+    if (red.events.length > redTarget || blue.events.length > blueTarget) this.fail('出球机构出现连续出球，本场无效，请重新开始。');
+    if (blue.events.length === blueTarget && this.tick >= blue.events[blueTarget-1].tick + 180) this.phase = 'complete';
     if (this.tick > 120 * 180) this.fail('出球等待超时，本场未完成，请重新开始。');
     for (const chamber of this.chambers) for (const ball of chamber.balls) {
       const p = ball.body.translation();

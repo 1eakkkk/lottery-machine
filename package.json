@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "双色球三维机械开奖模拟器",
   "scripts": {
-    "test": "tsx scripts/verify-physics.ts",
+    "test": "tsx scripts/verify-physics.ts && tsx scripts/verify-physics.ts dlt",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1"

@@ -81,3 +81,9 @@ GitHub 保存源码、方案、依赖锁文件、构建及物理验证流程。C
 - Cloudflare 静态资源： https://developers.cloudflare.com/workers/static-assets/
 - Cloudflare 自定义域名： https://developers.cloudflare.com/workers/configuration/routing/custom-domains/
 - Cloudflare GitHub 构建集成： https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/github-integration/
+
+## 后续玩法确认与实施（2026-10-01）
+
+用户确认开发顺序为大乐透 → 福彩 3D → 七乐彩 → 快乐 8。大乐透已经接入独立气流场与 5＋2 物理流程，模型 dlt-airflow-v1；SSQ 仍为 ssq-mechanical-v2。新玩法通过参数入口选择，保持各自历史、号码分区和模型版本，切换会重新准备机器。
+
+福彩 3D：三组 0—9 球，分别抽百位、十位、个位，允许跨位置重复，不把三个号码做升序排序。七乐彩：同一组 1—30 球连续抽 7 个基本号，再抽 1 个特别号，不另开一组蓝球。快乐 8：1—80 中连续抽 20 个，需扩大球仓、接收结构和结果布局后独立验收。未完成整场出球、边界、同输入回放及手机 UI 检查的玩法不显示为上线功能。

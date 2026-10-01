@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { numberedBallSurface } from './ball-label';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GAMES, type GameId } from './games';
 import { BALL_RADIUS, CHAMBER_RADIUS, CENTER_Y, FLOOR_Y, PORT_Z, PORT_RADIUS,TUBE_RADIUS, TRAY, ROTOR_Y, ROTOR_X, ROTOR_Z, ANGULAR_SPEED, DT, floorGeometry,tubeGeometry, type Snapshot } from './physics';
 
 export class MachineScene {
@@ -14,13 +15,13 @@ export class MachineScene {
   private reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   private displayRotation = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1,1,0).normalize(), new THREE.Vector3(0,0,1));
   observer: ResizeObserver; initialPosition = new THREE.Vector3(0, 4.7, 9.5);
-  constructor(public container: HTMLElement) {
+  constructor(public container: HTMLElement, public game:GameId='ssq') {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7));
     this.renderer.setClearColor('#eeeee9'); this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.3;
-    this.renderer.domElement.setAttribute('aria-label', '双色球三维机械开奖机器，可拖动旋转视角');
+    this.renderer.domElement.setAttribute('aria-label', `${GAMES[game].title}三维开奖机器，可拖动旋转视角`);
     this.container.append(this.renderer.domElement);
     this.scene.fog = new THREE.Fog('#eeeee9', 14, 24);
     this.camera = new THREE.PerspectiveCamera(34, 1, 0.025, 80); this.camera.position.copy(this.initialPosition);
@@ -39,7 +40,8 @@ export class MachineScene {
     const fill = new THREE.DirectionalLight('#d6e4ff', 2); fill.position.set(4, 4, -3); this.scene.add(fill);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ color: '#eeeee9', roughness: 0.78 }));
     floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; this.scene.add(floor);
-    this.machine(-1.45, '#b83029', 33, 'RED  /  33'); this.machine(1.45, '#16368f', 16, 'BLUE  /  16');
+    const config=GAMES[game];
+    this.machine(-1.45, config.colors[0], config.counts[0], `${config.zones[0]}  /  ${config.counts[0]}`); this.machine(1.45, config.colors[1], config.counts[1], `${config.zones[1]}  /  ${config.counts[1]}`);
     this.createResultRack();
     this.observer = new ResizeObserver(() => this.resize()); this.observer.observe(container); this.resize();
   }
@@ -49,11 +51,12 @@ export class MachineScene {
     this.mesh(new THREE.BoxGeometry(2.65,.07,.40),steel,0,.46,1.3,this.resultRack);
     for(const x of [-1.14,1.14]) this.mesh(new THREE.BoxGeometry(.055,.42,.12),steel,x,.23,1.3,this.resultRack);
     for (let i = 0; i < 7; i++) {
-      const x = i < 6 ? -.93 + i * .31 : 1.03;
+      const x = this.resultX(i);
       const ring = new THREE.Mesh(new THREE.TorusGeometry(.074,.009,8,24),steel);
       ring.rotation.x = Math.PI / 2; ring.position.set(x,.508,1.3); this.resultRack.add(ring);
     }
   }
+  private resultX(index:number) {return -.93+index*.31+(index>=GAMES[this.game].draws[0]?.12:0);}
   setDragMode(pan: boolean) {
     this.controls.mouseButtons.LEFT = pan ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
     this.controls.touches.ONE = pan ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE;
@@ -133,7 +136,7 @@ export class MachineScene {
     deckGeometry.setAttribute('position',new THREE.BufferAttribute(floor.vertices,3)); deckGeometry.setIndex(new THREE.BufferAttribute(floor.indices,1)); deckGeometry.computeVertexNormals();
     const deckMaterial=steel.clone();deckMaterial.side=THREE.DoubleSide;this.mesh(deckGeometry,deckMaterial,x,0,0);
     const rotorGroups: THREE.Group[] = [];
-    for (const side of [-1, 1]) {
+    for (const side of GAMES[this.game].mixing==='airflow'?[]:[-1, 1]) {
       const rotor = new THREE.Group(); rotor.position.set(x + side * ROTOR_X, ROTOR_Y, ROTOR_Z); this.scene.add(rotor);
       for (let i = 0; i < 6; i++) {
         const a = i * Math.PI / 3;
@@ -144,6 +147,14 @@ export class MachineScene {
       rotorGroups.push(rotor);
     }
     this.rotors.push(rotorGroups);
+    if(GAMES[this.game].mixing==='airflow') {
+      // Visible blower manifold instead of mechanical paddles.
+      for(const side of [-1,1]) {
+        this.mesh(new THREE.CylinderGeometry(.075,.075,.62,20),steel,x+side*.46,1.86,-.27);
+        this.mesh(new THREE.CylinderGeometry(.11,.075,.12,20),dark,x+side*.46,2.20,-.27);
+      }
+      this.mesh(new THREE.CylinderGeometry(.31,.31,.25,32),dark,x,1.50,-.18);
+    }
     const tube=tubeGeometry(),tubeMesh=new THREE.BufferGeometry();tubeMesh.setAttribute('position',new THREE.BufferAttribute(tube.vertices,3));tubeMesh.setIndex(new THREE.BufferAttribute(tube.indices,1));tubeMesh.computeVertexNormals();this.mesh(tubeMesh,glass.clone(),x,0,0);
     for (const y of [1.02, 1.8]) this.ring(TUBE_RADIUS + 0.01, x, y, PORT_Z, bronze);
     this.gates.push(this.mesh(new THREE.CylinderGeometry(PORT_RADIUS + 0.02, PORT_RADIUS + 0.02, 0.036, 32), dark, x, FLOOR_Y - 0.03, PORT_Z));
@@ -189,11 +200,12 @@ export class MachineScene {
     this.balls.forEach((ball, i) => {
       const j = i * 8; ball.position.set(s.balls[j], s.balls[j + 1], s.balls[j + 2]); ball.quaternion.set(s.balls[j + 3], s.balls[j + 4], s.balls[j + 5], s.balls[j + 6]);
     });
-    const redMoving = s.tick >= 240 && s.events.filter(e => e.color === 'red').length < 6;
+    const frontTarget=GAMES[this.game].draws[0];
+    const redMoving = s.tick >= 240 && s.events.filter(e => e.color === 'red').length < frontTarget;
     const blueMoving = blueStart > 0 && s.tick >= blueStart;
     this.rotors.forEach((group, c) => group.forEach((rotor, i) => {
       const moving = c === 0 ? redMoving : blueMoving, tick = c === 0 ? s.tick : s.tick - blueStart;
-      const stoppedTick=c===0?s.events.filter(e=>e.color==='red')[5]?.tick:undefined;
+      const stoppedTick=c===0?s.events.filter(e=>e.color==='red')[frontTarget-1]?.tick:undefined;
       const a = moving ? (i===0?1:-1)*(tick*DT*ANGULAR_SPEED+seedPhase+c):stoppedTick?(i===0?1:-1)*(stoppedTick*DT*ANGULAR_SPEED+seedPhase):0;
       const tilt=0,st=Math.sin(tilt/2),ct=Math.cos(tilt/2),sa=Math.sin(a/2),ca=Math.cos(a/2);
       rotor.quaternion.set(-st*sa,ct*sa,st*ca,ct*ca);
@@ -204,8 +216,8 @@ export class MachineScene {
       this.resultShown=true;this.resultRack.visible=true;
       for(let index=0;index<s.events.length;index++) {
         const event=s.events[index];
-        const ball=this.balls[(event.color==='red'?0:33)+event.number-1];
-        this.resultMoves.push({ball,from:ball.position.clone(),rotation:ball.quaternion.clone(),to:new THREE.Vector3(index<6?-.93+index*.31:1.03,.588,1.3),start:performance.now()});
+        const ball=this.balls[(event.color==='red'?0:GAMES[this.game].counts[0])+event.number-1];
+        this.resultMoves.push({ball,from:ball.position.clone(),rotation:ball.quaternion.clone(),to:new THREE.Vector3(this.resultX(index),.588,1.3),start:performance.now()});
       }
     }
   }

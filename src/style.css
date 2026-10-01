@@ -25,3 +25,5 @@ footer{max-width:1240px;margin:auto;border-top:1px solid var(--line);padding:25p
 @media(max-width:700px){.studio-bottom{justify-content:center}.studio-bottom>div:last-child{display:flex;gap:6px;margin-left:0}.views{justify-content:center}.studio-bottom .round-control{min-height:34px}}
 
 .views{max-width:100%;box-sizing:border-box;flex-wrap:wrap}
+
+.game-picker{display:flex;align-items:center;gap:8px;margin:-8px 0 20px;flex-wrap:wrap}.game-picker a{font-size:12px;color:#788271;padding:9px 16px;border:1px solid #d1d7cc;border-radius:8px;text-decoration:none}.game-picker a[aria-current=page]{background:#28352d;color:white;border-color:#28352d}.game-picker span{margin-left:auto;font-size:10px;color:#8a9085}.game-dlt .number.blue{background:#ad790f}.game-dlt .legend .blue{background:#ad790f}.game-dlt .history-numbers strong{color:#ad790f}@media(max-width:700px){.game-picker span{width:100%;margin-left:0}.game-picker a{min-height:34px;display:flex;align-items:center;padding:5px 15px}}
