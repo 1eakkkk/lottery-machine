@@ -1,9 +1,11 @@
 import './style.css';
+import './accounts.css';
 import { MachineScene } from './scene';
 import { DrawSoundscape } from './soundscape';
 import { DT, randomGenerator, type Snapshot, type Phase, type DrawEvent } from './physics';
 import { GAMES, gameId, eventZone } from './games';
 import {orderedEvents,resultText} from './results';
+import { Accounts } from './accounts';
 const game=gameId(new URLSearchParams(location.search).get('game')), config=GAMES[game], MODEL_VERSION=config.model;
 const total=config.draws.reduce((a,b)=>a+b,0), mixingLabel=config.mixing==='mechanical'?'机械搅拌':'气流混合';
 const ruleLabel=game==='fc3d'?'百位 · 十位 · 个位':game==='qlc'?'7 + 1':game==='kl8'?'80 选 20':`${config.draws[0]} + ${config.draws[1]}`;
@@ -22,10 +24,14 @@ document.querySelector('#app')!.innerHTML = `
 <section class="below"><div id="about"><h2 class="section-title">每一个号码，都经过一次碰撞。<small>01 / 原理</small></h2><p class="description">${config.description}</p><div class="legend">${config.zones.map((zone,i)=>`<span><i style="background:${config.colors[i]}"></i>${zone} ${game==='fc3d'?'0—9':`01—${config.counts[i]}`}</span>`).join('')}<span>三维刚体物理</span></div><details class="details"><summary>打开物理与回放详情</summary><dl><dt>物理引擎</dt><dd>Rapier 3D · WASM</dd><dt>模拟步长</dt><dd>1 / 120 秒</dd><dt>模型版本</dt><dd>${MODEL_VERSION}</dd><dt>本场种子</dt><dd id="seed-display">—</dd><dt>物理步数</dt><dd id="tick-display">0</dd><dt>出球事件</dt><dd id="event-display">等待开始</dd></dl><p>${config.mixing==='airflow'?'气流使用经验风速与阻力场，不是完整流体计算。':'依据双向机械搅拌原理制作。'}${game==='fc3d'?'官方同类气流机器采用顶部捕球；本版本使用底部实体阀与接球槽，尚未复刻顶部捕球结构。':''}出球通道与机器外观均为简化结构。内部部件与装球结构尚未按设备实测数据校准。物理运动不等于严格等概率，模拟不能预测实际开奖。</p><p><a href="${config.reference}" target="_blank" rel="noopener">查看设备原理介绍 ↗</a></p></details></div><div><h2 class="section-title">最近的偶然<small>02 / 本机记录</small></h2><div id="history"></div><p class="description" style="font-size:10px;margin-top:15px">记录保存在当前设备。回放使用相同种子与模型重新运行物理过程。</p></div></section></main>
 <footer><span>1EAK / 一刻开奖 · 仅供模拟体验，与官方开奖无关联</span><span><a href="https://github.com/1eakkkk/lottery-machine" target="_blank" rel="noopener">源码公开</a> · 独立运行，无需登录</span></footer><div id="toast" class="toast hidden" role="status"></div>`;
 
-type RecordItem = { seed: number; model: string; date: string; events: DrawEvent[] };
-const STORAGE = game==='ssq'?'1eak-draw-history-v1':`1eak-${game}-history-v1`;
-let history: RecordItem[] = [];
-try { const saved = JSON.parse(localStorage.getItem(STORAGE) || '[]'); if (Array.isArray(saved)) history = saved.filter(r => r && r.model === MODEL_VERSION && Number.isInteger(r.seed) && Array.isArray(r.events) && r.events.length === total && typeof r.date === 'string').slice(0, 20); } catch { /* Storage can be disabled without disabling the simulator. */ }
+const accountOpen=document.createElement('button');accountOpen.id='account-open';accountOpen.className='account-nav';accountOpen.textContent='登录 / 注册';
+const accountLogout=document.createElement('button');accountLogout.id='account-logout';accountLogout.className='account-nav hidden';accountLogout.textContent='退出';
+document.querySelector('.nav')!.append(accountOpen,accountLogout);
+const saveRound=document.createElement('button');saveRound.id='save-round';saveRound.className='secondary hidden';document.querySelector('.actions')!.append(saveRound);
+document.querySelector('#history')!.previousElementSibling!.querySelector('small')!.textContent='02 / 我的记录';
+document.querySelector('#history')!.nextElementSibling!.textContent='登录后自动保存，每个玩法最多保留最近 100 场。回放使用相同种子与模型重现模拟。';
+let accounts:Accounts;
+let roundId=crypto.randomUUID();
 let scene: MachineScene | undefined, snapshot: Snapshot | undefined, running = false, paused = false, busy = false, sorted = false, sound = true, recorded = false, replaying = false, fatalError=false, panMode=false;
 let id = 0, blueStart = 0, seedPhase = 0, accumulator = 0, lastTime = performance.now(), lastEventCount = 0, previousPhase: Phase | undefined;
 function selectView(name: string) {
@@ -52,21 +58,24 @@ function drawNumbers(events: DrawEvent[]) {
 }
 function renderHistory() {
   const list = el('history'); list.replaceChildren();
+  if(!accounts || !accounts.renderHistoryIntro(list))return;
+  const history=accounts.records;
   if (!history.length) { const p = document.createElement('p'); p.className = 'history-empty'; p.textContent = '还没有记录。启动机器，留下第一场开奖。'; list.append(p); return; }
-  for (const record of history.slice(0,5)) {
+  for (const record of history) {
     const row = document.createElement('div'); row.className = 'history-item';
-    const time = document.createElement('span'); time.className = 'history-time'; time.textContent = new Date(record.date).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+    const time = document.createElement('span'); time.className = 'history-time'; time.textContent = new Date(record.date).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
     const nums = document.createElement('span'); nums.className = 'history-numbers';
     if(game==='ssq'||game==='dlt'||game==='qlc') {
       const base=record.events.filter(e=>e.color==='red'),extra=record.events.filter(e=>e.color==='blue');
       nums.textContent=base.map(e=>pad(e.number)).join(' ');
       const special=document.createElement('strong');special.textContent=(game==='qlc'?'特别号 ':'')+extra.map(e=>pad(e.number)).join(' ');nums.append(special);
     } else nums.textContent=resultText(game,record.events);
-    const replay = document.createElement('button'); replay.textContent = '回放'; replay.addEventListener('click', () => { if (running) return toast('请先完成或重新开始当前场次。'); void soundscape.unlock(); initialize(record.seed, true); });
+    const replay = document.createElement('button'); replay.textContent = '回放';replay.disabled=record.model!==MODEL_VERSION;replay.title=replay.disabled?'此记录使用旧模型，仅支持查看号码。':'重现本场物理过程'; replay.addEventListener('click', () => { if (running) return toast('请先完成或重新开始当前场次。'); void soundscape.unlock(); initialize(record.seed, true); });
     row.append(time, nums, replay); list.append(row);
   }
 }
 function initialize(seed = crypto.getRandomValues(new Uint32Array(1))[0], replay = false) {
+  roundId=crypto.randomUUID();accounts?.clearRound();
   soundscape.setState('idle'); soundscape.setSuspended(document.hidden);
   el('result-view').classList.add('hidden');scene?.view('all');document.querySelectorAll('[data-view]').forEach(e=>e.classList.toggle('active',(e as HTMLElement).dataset.view==='all'));
   id++; running = false; paused = false; busy = true; snapshot = undefined; recorded = false; replaying = replay; blueStart = 0; lastEventCount = 0; accumulator = 0; previousPhase=undefined;
@@ -115,10 +124,9 @@ worker.onmessage = ({data}) => {
     soundscape.setState('complete');el('result-view').classList.remove('hidden');
     running = false; el('start').textContent = '再开一场'; el<HTMLButtonElement>('start').disabled = false; el<HTMLButtonElement>('copy').disabled = false;
     el('pause').classList.add('hidden'); el('reset').classList.add('hidden'); el('run-indicator').classList.remove('running');
-    el('status').textContent = replaying ? '回放完成，相同输入下重新运行了完整物理过程。' : '本场开奖完成。结果已保存在本机，可随时回放。';
+    el('status').textContent = replaying ? '回放完成，相同输入下重新运行了完整物理过程。' : '本场开奖完成，结果可复制。';
     if (!recorded && !replaying) {
-      history.unshift({seed:s.seed,model:MODEL_VERSION,date:new Date().toISOString(),events:s.events}); history=history.slice(0,20); recorded=true;
-      try {localStorage.setItem(STORAGE,JSON.stringify(history));} catch {el('status').textContent='开奖完成；浏览器未允许保存本机历史。';} renderHistory();
+      recorded=true;accounts.completed({id:roundId,game,seed:s.seed,model:MODEL_VERSION,date:new Date().toISOString(),events:s.events});
     }
   }
   if (paused && running) el('status').textContent='已暂停，物理步骤与球体状态保持。';
@@ -135,6 +143,7 @@ el('fullscreen').addEventListener('click',async()=>{try{if(document.fullscreenEl
 document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(button=>button.addEventListener('click',()=>selectView(button.dataset.view!)));
 document.addEventListener('visibilitychange',()=>{soundscape.setSuspended(document.hidden||paused);accumulator=0;lastTime=performance.now();});
 if(game==='fc3d'){el('sort').classList.add('hidden');el('result-order').textContent='百位 · 十位 · 个位';}
+accounts=new Accounts(game,renderHistory,toast);
 drawNumbers([]);renderHistory();
 try {scene=new MachineScene(el('stage'),game);initialize();} catch {el('loading').classList.add('hidden'); const error=document.createElement('div');error.className='stage-error';error.innerHTML='<strong>三维画面暂时无法启动</strong><p>请使用支持 WebGL 的浏览器，并开启图形加速后刷新页面。</p>';el('stage').append(error);fail('当前浏览器未能启动三维图形，请更换浏览器或开启图形加速。');}
 // Physics scheduling is independent of drawing frames, including occluded windows.
