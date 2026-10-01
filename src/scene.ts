@@ -41,6 +41,7 @@ export class MachineScene {
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ color: '#eeeee9', roughness: 0.78 }));
     floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; this.scene.add(floor);
     const config=GAMES[game];
+    if(game==='kl8')this.displayRotation.setFromUnitVectors(new THREE.Vector3(1,1,0).normalize(),new THREE.Vector3(0,.6,.8));
     config.offsets.forEach((x,i)=>this.machine(x,config.colors[i],config.counts[i],`${config.zones[i]}  /  ${config.counts[i]}`));
     this.createResultRack();
     this.observer = new ResizeObserver(() => this.resize()); this.observer.observe(container); this.resize();
@@ -239,7 +240,10 @@ export class MachineScene {
   }
   view(name: string) {
     this.currentView = name;
-    if (name === 'results' || (name==='tray'&&this.resultShown)) {this.camera.position.set(0,1.4,1.3+Math.max(2.8,(this.game==='kl8'?3.8:3)/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));this.controls.target.set(0,.588,1.3);}
+    if (name === 'results' || (name==='tray'&&this.resultShown)) {
+      const distance=Math.max(2.8,(this.game==='kl8'?3.8:3)/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect));
+      this.camera.position.set(0,this.game==='kl8'?.588+distance*.75:1.4,1.3+distance);this.controls.target.set(0,.588,1.3);
+    }
     else if(name==='tray'){const tray=receivingTray(this.game),x=GAMES[this.game].offsets[0]+tray.centerX;this.camera.position.set(x,1.5,PORT_Z+Math.max(3,(tray.halfLength*2+.4)/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));this.controls.target.set(x,.8,PORT_Z);}
     else if(['red','blue','third'].includes(name)) {
       const x=GAMES[this.game].offsets[['red','blue','third'].indexOf(name)]??0;
