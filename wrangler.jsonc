@@ -1,0 +1,8 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lottery-machine",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" },
+  "routes": [{ "pattern": "lottery.1eak.cool", "custom_domain": true }],
+  "workers_dev": true
+}
