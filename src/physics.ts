@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { GAMES, type GameId } from './games';
+import { GAMES } from './games';
 import { airVelocity } from './airflow';
 export const MODEL_VERSION = 'ssq-mechanical-v2';
 export const DT = 1 / 120, BALL_RADIUS = 0.082, CHAMBER_RADIUS = 1.08, CENTER_Y = 2.7, FLOOR_Y = 1.94;
@@ -7,9 +7,9 @@ export const PORT_Z = 0.48, PORT_RADIUS = 0.158, ROTOR_Y = 2.08, ROTOR_X = 0.30,
 export const TUBE_RADIUS=.106;
 // A narrow, inclined receiving lane: balls roll from the outlet toward the end stop.
 export const TRAY = { centerX: -.5, halfLength: .9, halfWidth: .095, y: .63, slope: .10, wallY: .83, wallHalfHeight: .175 };
-export type Phase = 'ready' | 'loading' | 'mixing' | 'red' | 'blue' | 'complete' | 'failed';
-export type DrawEvent = { color: 'red' | 'blue'; number: number; tick: number };
-export type Snapshot = { tick: number; phase: Phase; gate: [boolean, boolean]; outlet: [boolean, boolean]; balls: number[]; events: DrawEvent[]; seed: number; error?: string };
+export type Phase = 'ready' | 'loading' | 'mixing' | 'red' | 'blue' | 'third' | 'complete' | 'failed';
+export type DrawEvent = { color: 'red' | 'blue'; number: number; tick: number; zone?: number; special?: boolean };
+export type Snapshot = { tick: number; phase: Phase; gate: boolean[]; outlet: boolean[]; balls: number[]; events: DrawEvent[]; seed: number; error?: string; rotorRotations?: number[][]; activeZone?: number };
 export function randomGenerator(seed: number) {
   let a = seed >>> 0;
   return () => { a = (a + 0x6D2B79F5) >>> 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t ^= t + Math.imul(t ^ (t >>> 7), 61 | t); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -73,6 +73,14 @@ export class Chamber {
       world.createCollider(RAPIER.ColliderDesc.cuboid(.025, tray.wallHalfHeight, tray.halfWidth).setTranslation(tray.centerX+side*(tray.halfLength+.025), tray.wallY, PORT_Z).setRestitution(0), fixed);
     }
     world.createCollider(RAPIER.ColliderDesc.cuboid(tray.halfLength, .025, tray.halfWidth).setTranslation(tray.centerX, tray.y, PORT_Z).setRotation({x:0,y:0,z:Math.sin(tray.slope/2),w:Math.cos(tray.slope/2)}).setFriction(.18).setRestitution(0), fixed);
+    if(tray.halfLength>2) {
+      // A low transparent cover keeps a dense receiving lane one ball high.
+      // The uncovered inlet remains clear for balls falling from the tube.
+      const left=tray.centerX-tray.halfLength,right=-.35,x=(left+right)/2;
+      world.createCollider(RAPIER.ColliderDesc.cuboid((right-left)/2,.015,tray.halfWidth)
+        .setTranslation(x,tray.y+(x-tray.centerX)*Math.tan(tray.slope)+.22,PORT_Z)
+        .setRotation({x:0,y:0,z:Math.sin(tray.slope/2),w:Math.cos(tray.slope/2)}).setRestitution(0),fixed);
+    }
     // Counter-rotating paddle assemblies: momentum is imparted by contacts.
     for (const side of airflow?[]:[-1, 1]) {
       const rotor = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(offset + side * ROTOR_X, ROTOR_Y, ROTOR_Z));
@@ -132,7 +140,7 @@ export class Chamber {
 }
 export class DrawSimulation {
   world: RAPIER.World; chambers: [Chamber, Chamber]; tick = 0; phase: Phase = 'ready'; started = false; blueStart = 0; error?: string; seedPhase: number;
-  constructor(public seed: number, public game:GameId='ssq') {
+  constructor(public seed: number, public game:'ssq'|'dlt'='ssq') {
     const rng = randomGenerator(seed); this.seedPhase = rng() * 6;
     this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 }); this.world.timestep = DT; this.world.numSolverIterations = 8;
     const config=GAMES[game];

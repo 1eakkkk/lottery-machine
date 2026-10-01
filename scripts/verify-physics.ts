@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import { DrawSimulation, initializePhysics, randomGenerator, TRAY, PORT_Z, BALL_RADIUS } from '../src/physics.ts';
-import { GAMES, gameId } from '../src/games.ts';
+import { GAMES } from '../src/games.ts';
 await initializePhysics();
-const game=gameId(process.argv[2]??null),config=GAMES[game];
+const game=process.argv[2]==='dlt'?'dlt':'ssq',config=GAMES[game];
 const count = Number(process.env.DRAW_TEST_COUNT || 12);
 const offset=Number(process.env.DRAW_TEST_OFFSET||0);
 let totalTicks = 0; const results = [];let firstSnapshot;

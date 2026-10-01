@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { numberedBallSurface } from './ball-label';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GAMES, type GameId } from './games';
-import { BALL_RADIUS, CHAMBER_RADIUS, CENTER_Y, FLOOR_Y, PORT_Z, PORT_RADIUS,TUBE_RADIUS, TRAY, ROTOR_Y, ROTOR_X, ROTOR_Z, ANGULAR_SPEED, DT, floorGeometry,tubeGeometry, type Snapshot } from './physics';
+import { GAMES, receivingTray, eventZone, type GameId } from './games';
+import { BALL_RADIUS, CHAMBER_RADIUS, CENTER_Y, FLOOR_Y, PORT_Z, PORT_RADIUS,TUBE_RADIUS, ROTOR_Y, ROTOR_X, ROTOR_Z, ANGULAR_SPEED, DT, floorGeometry,tubeGeometry, type Snapshot } from './physics';
 
 export class MachineScene {
   renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); camera: THREE.PerspectiveCamera; controls: OrbitControls;
@@ -23,7 +23,7 @@ export class MachineScene {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.3;
     this.renderer.domElement.setAttribute('aria-label', `${GAMES[game].title}三维开奖机器，可拖动旋转视角`);
     this.container.append(this.renderer.domElement);
-    this.scene.fog = new THREE.Fog('#eeeee9', 14, 24);
+    this.scene.fog = new THREE.Fog('#eeeee9', 35, 65);
     this.camera = new THREE.PerspectiveCamera(34, 1, 0.025, 80); this.camera.position.copy(this.initialPosition);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.target.set(0, 2.1, 0); this.controls.enableDamping = true; this.controls.enablePan = true;
@@ -41,22 +41,23 @@ export class MachineScene {
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ color: '#eeeee9', roughness: 0.78 }));
     floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; this.scene.add(floor);
     const config=GAMES[game];
-    this.machine(-1.45, config.colors[0], config.counts[0], `${config.zones[0]}  /  ${config.counts[0]}`); this.machine(1.45, config.colors[1], config.counts[1], `${config.zones[1]}  /  ${config.counts[1]}`);
+    config.offsets.forEach((x,i)=>this.machine(x,config.colors[i],config.counts[i],`${config.zones[i]}  /  ${config.counts[i]}`));
     this.createResultRack();
     this.observer = new ResizeObserver(() => this.resize()); this.observer.observe(container); this.resize();
   }
   private createResultRack() {
     this.scene.add(this.resultRack); this.resultRack.visible=false;
     const steel = this.material('#bfc5c2');
-    this.mesh(new THREE.BoxGeometry(2.65,.07,.40),steel,0,.46,1.3,this.resultRack);
+    this.mesh(new THREE.BoxGeometry(this.game==='kl8'?3.5:2.85,.07,this.game==='kl8'?.80:.40),steel,0,.46,1.3,this.resultRack);
     for(const x of [-1.14,1.14]) this.mesh(new THREE.BoxGeometry(.055,.42,.12),steel,x,.23,1.3,this.resultRack);
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < GAMES[this.game].draws.reduce((a,b)=>a+b,0); i++) {
       const x = this.resultX(i);
       const ring = new THREE.Mesh(new THREE.TorusGeometry(.074,.009,8,24),steel);
-      ring.rotation.x = Math.PI / 2; ring.position.set(x,.508,1.3); this.resultRack.add(ring);
+      ring.rotation.x = Math.PI / 2; ring.position.set(x,.508,this.resultZ(i)); this.resultRack.add(ring);
     }
   }
-  private resultX(index:number) {return -.93+index*.31+(index>=GAMES[this.game].draws[0]?.12:0);}
+  private resultX(index:number) {const count=GAMES[this.game].draws.reduce((a,b)=>a+b,0);return ((this.game==='kl8'?index%10:index)-(Math.min(count,10)-1)/2)*.31;}
+  private resultZ(index:number) {return this.game==='kl8'?1.15+Math.floor(index/10)*.34:1.3;}
   setDragMode(pan: boolean) {
     this.controls.mouseButtons.LEFT = pan ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
     this.controls.touches.ONE = pan ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE;
@@ -110,6 +111,7 @@ export class MachineScene {
     const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; return texture;
   }
   machine(x: number, color: string, count: number, name: string) {
+    const tray=receivingTray(this.game);
     const steel = this.material('#bfc5c2'), dark = this.material('#333a38'), bronze = this.material('#b8aa81');
     const white = this.material('#dcded8', 0.2);
     this.mesh(new THREE.BoxGeometry(1.40,.10,.94),steel,x,.12,-.1);
@@ -159,11 +161,15 @@ export class MachineScene {
     for (const y of [1.02, 1.8]) this.ring(TUBE_RADIUS + 0.01, x, y, PORT_Z, bronze);
     this.gates.push(this.mesh(new THREE.CylinderGeometry(PORT_RADIUS + 0.02, PORT_RADIUS + 0.02, 0.036, 32), dark, x, FLOOR_Y - 0.03, PORT_Z));
     this.outletGates.push(this.mesh(new THREE.CylinderGeometry(PORT_RADIUS+.02,PORT_RADIUS+.02,.036,32),dark,x,FLOOR_Y-.26,PORT_Z));
-    this.mesh(new THREE.BoxGeometry(TRAY.halfLength*2, .05, TRAY.halfWidth*2), steel, x+TRAY.centerX, TRAY.y, PORT_Z).rotation.z=TRAY.slope;
+    this.mesh(new THREE.BoxGeometry(tray.halfLength*2, .05, tray.halfWidth*2), steel, x+tray.centerX, tray.y, PORT_Z).rotation.z=tray.slope;
     const railGlass=glass.clone();railGlass.opacity=.23;
+    if(tray.halfLength>2) {
+      const left=tray.centerX-tray.halfLength,right=-.35,cx=(left+right)/2;
+      this.mesh(new THREE.BoxGeometry(right-left,.03,tray.halfWidth*2),railGlass,x+cx,tray.y+(cx-tray.centerX)*Math.tan(tray.slope)+.22,PORT_Z).rotation.z=tray.slope;
+    }
     for (const side of [-1, 1]) {
-      this.mesh(new THREE.BoxGeometry(TRAY.halfLength*2+.05, TRAY.wallHalfHeight*2, .05), railGlass, x+TRAY.centerX, TRAY.wallY, PORT_Z+side*(TRAY.halfWidth+.025));
-      this.mesh(new THREE.BoxGeometry(.05, TRAY.wallHalfHeight*2, TRAY.halfWidth*2), steel, x+TRAY.centerX+side*(TRAY.halfLength+.025), TRAY.wallY, PORT_Z);
+      this.mesh(new THREE.BoxGeometry(tray.halfLength*2+.05, tray.wallHalfHeight*2, .05), railGlass, x+tray.centerX, tray.wallY, PORT_Z+side*(tray.halfWidth+.025));
+      this.mesh(new THREE.BoxGeometry(.05, tray.wallHalfHeight*2, tray.halfWidth*2), steel, x+tray.centerX+side*(tray.halfLength+.025), tray.wallY, PORT_Z);
     }
     this.mesh(new THREE.PlaneGeometry(.88,.22),new THREE.MeshBasicMaterial({map:this.textTexture('一刻开奖','#ffffff','#234771')}),x,1.02,.34);
     this.mesh(new THREE.PlaneGeometry(.70,.18),new THREE.MeshBasicMaterial({map:this.textTexture(name,'#dce7f1','#234771')}),x,.82,.34);
@@ -177,7 +183,7 @@ export class MachineScene {
     for (let i = 0; i < count; i++) {
       const ball = this.mesh(ballGeometry, ballMaterial, x, 2.8, 0);
       const labelCanvas=document.createElement('canvas');labelCanvas.width=128;labelCanvas.height=128;
-      const ctx=labelCanvas.getContext('2d')!;ctx.fillStyle='#fff9ed';ctx.beginPath();ctx.arc(64,64,58,0,Math.PI*2);ctx.fill();ctx.fillStyle='#080808';ctx.font='600 62px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(i+1),64,67);
+      const ctx=labelCanvas.getContext('2d')!;ctx.fillStyle='#fff9ed';ctx.beginPath();ctx.arc(64,64,58,0,Math.PI*2);ctx.fill();ctx.fillStyle='#080808';ctx.font='600 62px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(this.game==='fc3d'?i:i+1),64,67);
       const numberTexture=new THREE.CanvasTexture(labelCanvas);numberTexture.colorSpace=THREE.SRGBColorSpace;
       const labelMaterial = new THREE.MeshStandardMaterial({ map: numberTexture, transparent: true, alphaTest: .5, roughness: .9, metalness: 0 });
       // Repeated curved prints rotate and become occluded with the physical ball.
@@ -206,6 +212,8 @@ export class MachineScene {
     this.rotors.forEach((group, c) => group.forEach((rotor, i) => {
       const moving = c === 0 ? redMoving : blueMoving, tick = c === 0 ? s.tick : s.tick - blueStart;
       const stoppedTick=c===0?s.events.filter(e=>e.color==='red')[frontTarget-1]?.tick:undefined;
+      const actual=s.rotorRotations?.[c];
+      if(actual?.length){rotor.quaternion.fromArray(actual,i*4);return;}
       const a = moving ? (i===0?1:-1)*(tick*DT*ANGULAR_SPEED+seedPhase+c):stoppedTick?(i===0?1:-1)*(stoppedTick*DT*ANGULAR_SPEED+seedPhase):0;
       const tilt=0,st=Math.sin(tilt/2),ct=Math.cos(tilt/2),sa=Math.sin(a/2),ca=Math.cos(a/2);
       rotor.quaternion.set(-st*sa,ct*sa,st*ca,ct*ca);
@@ -216,8 +224,9 @@ export class MachineScene {
       this.resultShown=true;this.resultRack.visible=true;
       for(let index=0;index<s.events.length;index++) {
         const event=s.events[index];
-        const ball=this.balls[(event.color==='red'?0:GAMES[this.game].counts[0])+event.number-1];
-        this.resultMoves.push({ball,from:ball.position.clone(),rotation:ball.quaternion.clone(),to:new THREE.Vector3(this.resultX(index),.588,1.3),start:performance.now()});
+        const zone=eventZone(event),offset=GAMES[this.game].counts.slice(0,zone).reduce((a,b)=>a+b,0);
+        const ball=this.balls[offset+event.number-(this.game==='fc3d'?0:1)];
+        this.resultMoves.push({ball,from:ball.position.clone(),rotation:ball.quaternion.clone(),to:new THREE.Vector3(this.resultX(index),.588,this.resultZ(index)),start:performance.now()});
       }
     }
   }
@@ -230,13 +239,17 @@ export class MachineScene {
   }
   view(name: string) {
     this.currentView = name;
-    if (name === 'results' || (name==='tray'&&this.resultShown)) {this.camera.position.set(0,1.4,1.3+Math.max(2.8,3/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));this.controls.target.set(0,.588,1.3);}
-    else if (name === 'tray') {this.camera.position.set(-1.95,1.5,PORT_Z+Math.max(3,2.4/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));this.controls.target.set(-1.95,.8,PORT_Z);}
-    else if (name === 'red') { this.camera.position.set(-1.45, 3.5, 4.4); this.controls.target.set(-1.45, 2.5, 0); }
-    else if (name === 'blue') { this.camera.position.set(1.45, 3.5, 4.4); this.controls.target.set(1.45, 2.5, 0); }
+    if (name === 'results' || (name==='tray'&&this.resultShown)) {this.camera.position.set(0,1.4,1.3+Math.max(2.8,(this.game==='kl8'?3.8:3)/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));this.controls.target.set(0,.588,1.3);}
+    else if(name==='tray'){const tray=receivingTray(this.game),x=GAMES[this.game].offsets[0]+tray.centerX;this.camera.position.set(x,1.5,PORT_Z+Math.max(3,(tray.halfLength*2+.4)/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));this.controls.target.set(x,.8,PORT_Z);}
+    else if(['red','blue','third'].includes(name)) {
+      const x=GAMES[this.game].offsets[['red','blue','third'].indexOf(name)]??0;
+      this.camera.position.set(x,3.5,Math.max(4.4,2.4/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));
+      this.controls.target.set(x,2.5,0);
+    }
     else {
-      const distance = Math.max(7.2, 5.8 / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * this.camera.aspect));
-      this.camera.position.set(0, 1.85 + distance * .25, distance); this.controls.target.set(0, 1.85, 0);
+      const distance = Math.max(7.2, (this.game==='fc3d'?8.8:this.game==='kl8'?6: GAMES[this.game].counts.length===1?3.8:5.8) / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * this.camera.aspect));
+      const center=this.game==='kl8'?-1.35:0;
+      this.camera.position.set(center, 1.85 + distance * .25, distance); this.controls.target.set(center, 1.85, 0);
     }
   }
 }
