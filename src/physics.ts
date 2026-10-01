@@ -52,7 +52,7 @@ export class Chamber {
   open = false; nextOpen = 0; events: DrawEvent[] = [];
   lockTick=-1;outletOpen=false;
   lastAngle = 0;
-  constructor(public world: RAPIER.World, public color: 'red' | 'blue', public offset: number, count: number, rng: () => number, public airflow=false) {
+  constructor(public world: RAPIER.World, public color: 'red' | 'blue', public offset: number, count: number, rng: () => number, public airflow=false, public tray=TRAY) {
     const fixed = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(offset, 0, 0)), shell = shellGeometry();
     world.createCollider(RAPIER.ColliderDesc.trimesh(shell.vertices, shell.indices).setFriction(0.2).setRestitution(0.48), fixed);
     // A tiled floor with an actual opening. No invisible attraction or chosen ball.
@@ -69,10 +69,10 @@ export class Chamber {
     this.outletGate=world.createCollider(RAPIER.ColliderDesc.cylinder(.018,PORT_RADIUS+.02).setTranslation(0,FLOOR_Y-.26,PORT_Z),fixed);
     const tube=tubeGeometry();world.createCollider(RAPIER.ColliderDesc.trimesh(tube.vertices,tube.indices).setFriction(.1),fixed);
     for (const side of [-1, 1]) {
-      world.createCollider(RAPIER.ColliderDesc.cuboid(TRAY.halfLength+.025, TRAY.wallHalfHeight, .025).setTranslation(TRAY.centerX, TRAY.wallY, PORT_Z + side * (TRAY.halfWidth+.025)).setRestitution(0), fixed);
-      world.createCollider(RAPIER.ColliderDesc.cuboid(.025, TRAY.wallHalfHeight, TRAY.halfWidth).setTranslation(TRAY.centerX+side*(TRAY.halfLength+.025), TRAY.wallY, PORT_Z).setRestitution(0), fixed);
+      world.createCollider(RAPIER.ColliderDesc.cuboid(tray.halfLength+.025, tray.wallHalfHeight, .025).setTranslation(tray.centerX, tray.wallY, PORT_Z + side * (tray.halfWidth+.025)).setRestitution(0), fixed);
+      world.createCollider(RAPIER.ColliderDesc.cuboid(.025, tray.wallHalfHeight, tray.halfWidth).setTranslation(tray.centerX+side*(tray.halfLength+.025), tray.wallY, PORT_Z).setRestitution(0), fixed);
     }
-    world.createCollider(RAPIER.ColliderDesc.cuboid(TRAY.halfLength, .025, TRAY.halfWidth).setTranslation(TRAY.centerX, TRAY.y, PORT_Z).setRotation({x:0,y:0,z:Math.sin(TRAY.slope/2),w:Math.cos(TRAY.slope/2)}).setFriction(.18).setRestitution(0), fixed);
+    world.createCollider(RAPIER.ColliderDesc.cuboid(tray.halfLength, .025, tray.halfWidth).setTranslation(tray.centerX, tray.y, PORT_Z).setRotation({x:0,y:0,z:Math.sin(tray.slope/2),w:Math.cos(tray.slope/2)}).setFriction(.18).setRestitution(0), fixed);
     // Counter-rotating paddle assemblies: momentum is imparted by contacts.
     for (const side of airflow?[]:[-1, 1]) {
       const rotor = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(offset + side * ROTOR_X, ROTOR_Y, ROTOR_Z));
