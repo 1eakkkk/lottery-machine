@@ -38,6 +38,7 @@ export class Accounts {
     this.renderAccount();void this.refreshSession();
     if(this.resetToken){this.mode='reset';this.open();}
     else if(verified||linkError){this.open();this.message(verified?'邮箱验证成功，请登录。':'邮件链接无效或已过期，请重新申请。');}
+    else if(query.get('account')==='1'){this.open();}
   }
   private async api<T>(path:string, body?:unknown):Promise<T> {
     const response=await fetch(path,{method:body===undefined?'GET':'POST',credentials:'same-origin',cache:'no-store',

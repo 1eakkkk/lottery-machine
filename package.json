@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "五种彩票玩法的三维物理开奖模拟器",
   "scripts": {
-    "test": "npm run test:accounts && npm run test:airflow && tsx scripts/verify-physics.ts && tsx scripts/verify-physics.ts dlt && tsx scripts/verify-extended.ts",
+    "test": "npm run test:scratch && npm run test:scratch:server && npm run test:accounts && npm run test:airflow && tsx scripts/verify-physics.ts && tsx scripts/verify-physics.ts dlt && tsx scripts/verify-extended.ts",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && tsc -p tsconfig.server.json && vite build",
     "dev:accounts": "wrangler dev --port 8787 --local-upstream localhost:8787",
@@ -11,12 +11,15 @@
     "db:remote": "wrangler d1 migrations apply lottery-accounts --remote",
     "test:accounts": "wrangler deploy --dry-run --assets public --outdir artifacts/account-worker && tsx scripts/verify-accounts.ts",
     "preview": "vite preview --host 127.0.0.1",
-    "test:airflow": "tsx scripts/verify-airflow.ts"
+    "test:airflow": "tsx scripts/verify-airflow.ts",
+    "test:scratch": "tsx scripts/verify-scratch.ts",
+    "test:scratch:server": "wrangler deploy --dry-run --assets public --outdir artifacts/scratch-worker && tsx scripts/verify-scratch-server.ts"
   },
   "type": "module",
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",
     "better-auth": "^1.7.7",
+    "qrcode-generator": "^2.0.4",
     "three": "^0.186.1"
   },
   "devDependencies": {
