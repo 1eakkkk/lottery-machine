@@ -103,3 +103,68 @@ for (const i of [0, 499999, 999999])
 const frozen = { ...CATALOG[0], bonus: 1 };
 const frozenPrint = composeTicket(frozen.id, 20, 91, "FROZEN", 0, frozen);
 assert.equal(evaluateTicket(frozen.id, frozenPrint, frozen), 20);
+
+const { strokeZones } = await import("../src/scratch/coating");
+const strokeMasks = [
+  new Uint8Array(MASK_BYTES),
+  new Uint8Array(MASK_BYTES),
+  new Uint8Array(MASK_BYTES),
+];
+const crossed = strokeZones(
+  strokeMasks,
+  [
+    { x: 0, y: 0, w: 40, h: 40 },
+    { x: 50, y: 0, w: 40, h: 40 },
+    { x: 100, y: 0, w: 40, h: 40 },
+  ],
+  { x: 10, y: 20 },
+  { x: 130, y: 20 },
+  8,
+);
+assert.equal(crossed.size, 3);
+assert.ok(strokeMasks.every((m) => coveredCount(m) > 0));
+let fullXi = 0;
+for (const reward of [500, 1000])
+  for (let seed = 0; seed < 100; seed++) {
+    const t = composeTicket("xxf20", reward, seed);
+    if (t.rounds.every((r) => r.marks[0] === "喜")) {
+      fullXi++;
+      assert.equal(
+        t.rounds.reduce((sum, r) => sum + r.units, 0),
+        reward,
+      );
+    }
+  }
+assert.ok(fullXi > 0, "Full-XI fixed rewards appear");
+const legacy = { ...CATALOG[0], printStyle: undefined };
+for (let seed = 0; seed < 100; seed++)
+  assert.ok(
+    !composeTicket("xxf20", 500, seed, "OLD", 0, legacy).rounds.every(
+      (r) => r.marks[0] === "喜",
+    ),
+  );
+const { markHtml, amountHtml } = await import("../src/scratch/printing");
+for (const mark of [
+  "福",
+  "安",
+  "乐",
+  "吉",
+  "花",
+  "云",
+  "叶",
+  "星",
+  "饼",
+  "茶",
+  "糕",
+  "果",
+  "糖果",
+  "◇",
+  "给力手势",
+])
+  assert.ok(markHtml(mark).includes("<svg"));
+assert.ok(
+  amountHtml(500).includes("¥500") && !amountHtml(500).includes("积分"),
+);
+console.log(
+  "Continuous cross-zone strokes, reference-style vector printing, and 500/1000 full-XI layouts passed; legacy layout preserved.",
+);

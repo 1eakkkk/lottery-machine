@@ -210,7 +210,13 @@ export function composeTicket(
           marks = [
             value
               ? "7".repeat(mult)
-              : pick(["1", "2", "3", "4", "5", "6", "8", "9"]),
+              : g.printStyle === "burst-v2"
+                ? pick(
+                    Array.from({ length: 90 }, (_, i) => String(i + 10)).filter(
+                      (n) => n !== "77",
+                    ),
+                  )
+                : pick(["1", "2", "3", "4", "5", "6", "8", "9"]),
           ];
           if (value) units /= mult;
           break;
@@ -269,6 +275,27 @@ export function composeTicket(
       r.units = reward / count;
     });
     rounds[Math.floor(random() * count)].marks = ["给力手势"];
+  }
+  // A rare all-XI layout expresses the already assigned prize; it never chooses a prize.
+  const burstCount = count - g.bonus;
+  if (
+    g.printStyle === "burst-v2" &&
+    g.mechanic === "double" &&
+    reward >= burstCount * 10 &&
+    reward % 10 === 0 &&
+    random() < 0.2
+  ) {
+    const base = Math.floor(reward / burstCount / 10) * 10,
+      extra = (reward - base * burstCount) / 10;
+    rounds.forEach((r, i) => {
+      if (i < g.bonus) {
+        r.marks = ["花"];
+        r.units = 0;
+      } else {
+        r.marks = ["喜"];
+        r.units = base + (i - g.bonus < extra ? 10 : 0);
+      }
+    });
   }
   const ticket = { serial, index, reward, lucky, rounds };
   if (evaluateTicket(id, ticket, g) !== reward)

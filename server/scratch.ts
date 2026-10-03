@@ -1,4 +1,11 @@
 import {
+  ensureWallet,
+  transferWallet,
+  walletState,
+  claimDaily,
+  applyEvent,
+} from "./scratch-wallet";
+import {
   CATALOG,
   gameById,
   poolFor,
@@ -180,6 +187,7 @@ async function actor(
   )
     .bind(guest, now())
     .run();
+  await ensureWallet(env, guest);
   const session = env.BETTER_AUTH_SECRET
     ? await createAuth(env).api.getSession({ headers: request.headers })
     : null;
@@ -200,6 +208,7 @@ async function actor(
         "UPDATE scratch_orders SET owner=? WHERE owner=? AND EXISTS(SELECT 1 FROM scratch_actors WHERE id=? AND user_id=?)",
       ).bind(id, guest, guest, id),
     ]);
+    await transferWallet(env, guest, id);
   } else {
     const linked = await env.DB.prepare(
       "SELECT user_id FROM scratch_actors WHERE id=?",
@@ -214,6 +223,7 @@ async function actor(
       )
         .bind(newId, now())
         .run();
+      await ensureWallet(env, newId);
       return {
         id: newId,
         loggedIn: false,
@@ -358,11 +368,28 @@ async function take(env: Env, issue: Issue, owner: string, body: any) {
     !/^[0-9a-f-]{36}$/.test(orderId)
   )
     fail(400, "请填写正确的册号与领取张数。");
-  await env.DB.prepare(
-    "INSERT OR IGNORE INTO scratch_orders (id,owner,issue_id,book_number,quantity,created_at) VALUES (?,?,?,?,?,?)",
-  )
-    .bind(orderId, owner, issue.id, book, quantity, now())
-    .run();
+  const debit = "take:" + orderId,
+    cost = quantity * g.denomination;
+  await env.DB.batch([
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO scratch_orders (id,owner,issue_id,book_number,quantity,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM scratch_wallets WHERE owner=? AND balance>=?) AND NOT EXISTS(SELECT 1 FROM scratch_actors WHERE id=? AND user_id IS NOT NULL)",
+    ).bind(orderId, owner, issue.id, book, quantity, now(), owner, cost, owner),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO scratch_point_events (id,owner,kind,delta,reference,created_at) SELECT ?,?,'TAKE',?,?,? WHERE EXISTS(SELECT 1 FROM scratch_orders WHERE id=? AND owner=? AND issue_id=? AND book_number=? AND quantity=?)",
+    ).bind(
+      debit,
+      owner,
+      -cost,
+      g.title + " · " + quantity + "张",
+      now(),
+      orderId,
+      owner,
+      issue.id,
+      book,
+      quantity,
+    ),
+    ...applyEvent(env, owner, debit),
+  ]);
   const order = await env.DB.prepare("SELECT * FROM scratch_orders WHERE id=?")
     .bind(orderId)
     .first<{
@@ -371,6 +398,7 @@ async function take(env: Env, issue: Issue, owner: string, body: any) {
       book_number: number;
       quantity: number;
     }>();
+  if (!order) fail(402, "虚拟 ¥ 不足，请先领取每日补给，或减少领票张数。");
   if (
     !order ||
     order.owner !== owner ||
@@ -403,6 +431,25 @@ async function take(env: Env, issue: Issue, owner: string, body: any) {
       env.DB.prepare(
         "UPDATE scratch_reservations SET applied=1 WHERE id=?",
       ).bind(reservation),
+    ]);
+  }
+  const receivedTotal = await env.DB.prepare(
+    "SELECT COALESCE(SUM(quantity),0) AS n FROM scratch_reservations WHERE order_id=?",
+  )
+    .bind(orderId)
+    .first<{ n: number }>();
+  if (receivedTotal!.n < quantity) {
+    const refund = "refund:" + orderId;
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO scratch_point_events (id,owner,kind,delta,reference,created_at) VALUES (?,?,'REFUND',?,'库存不足退回',?)",
+      ).bind(
+        refund,
+        owner,
+        (quantity - receivedTotal!.n) * g.denomination,
+        now(),
+      ),
+      ...applyEvent(env, owner, refund),
     ]);
   }
   await materialize(env, issue, orderId, owner);
@@ -469,7 +516,21 @@ export async function scratchApi(
         .run();
     let result: unknown;
     const path = url.pathname.slice("/api/scratch".length);
-    if (path === "/workshop" && request.method === "GET") {
+    if (path === "/wallet" && request.method === "GET") {
+      result = await walletState(
+        env,
+        a.id,
+        a.loggedIn,
+        Math.floor(
+          Math.max(
+            0,
+            Math.min(1000000, Number(url.searchParams.get("offset")) || 0),
+          ),
+        ),
+      );
+    } else if (path === "/daily" && request.method === "POST") {
+      result = await claimDaily(env, a.id, a.loggedIn);
+    } else if (path === "/workshop" && request.method === "GET") {
       const issue = await getIssue(
           env,
           url.searchParams.get("game") ?? CATALOG[0].id,
@@ -482,7 +543,7 @@ export async function scratchApi(
           .bind(issue.id)
           .first<{ n: number }>(),
         points = await env.DB.prepare(
-          "SELECT COALESCE(SUM(l.units),0) AS n FROM scratch_ledger l JOIN scratch_tickets t ON t.id=l.ticket_id WHERE t.owner=?",
+          "SELECT balance AS n FROM scratch_wallets WHERE owner=?",
         )
           .bind(a.id)
           .first<{ n: number }>();
@@ -593,12 +654,12 @@ export async function scratchApi(
         if (body.revealAll !== true) {
           if (
             !Array.isArray(body.masks) ||
-            body.masks.length > zones ||
+            body.masks.length > zones + 1 ||
             !Array.isArray(body.revealed) ||
-            body.revealed.length > zones
+            body.revealed.length > zones + 1
           )
             fail(400, "刮擦数据无效。");
-          for (let i = 0; i < zones; i++) {
+          for (let i = 0; i <= zones; i++) {
             const m = body.masks[i] ?? "";
             if (
               typeof m !== "string" ||
@@ -614,7 +675,9 @@ export async function scratchApi(
                 pixels++;
               }
             input.revealed[i] =
-              body.revealed[i] === true && pixels >= 96 * 64 * 0.62;
+              i < zones &&
+              body.revealed[i] === true &&
+              pixels >= 96 * 64 * 0.62;
           }
         } else input.revealed = Array.from({ length: zones }, () => true);
         // Optimistic compare-and-swap prevents a stale tab from recovering coating.
@@ -696,6 +759,10 @@ export async function scratchApi(
           env.DB.prepare(
             "INSERT OR IGNORE INTO scratch_ledger (ticket_id,units,created_at) SELECT id,prize,redeemed_at FROM scratch_tickets WHERE id=? AND owner=? AND status='REDEEMED'",
           ).bind(t.id, a.id),
+          env.DB.prepare(
+            "INSERT OR IGNORE INTO scratch_point_events (id,owner,kind,delta,reference,created_at) SELECT ?,?,'REWARD',prize,serial,? FROM scratch_tickets WHERE id=? AND owner=? AND status='REDEEMED'",
+          ).bind("reward:" + t.id, a.id, now(), t.id, a.id),
+          ...applyEvent(env, a.id, "reward:" + t.id),
         ]);
       }
       result = publicTicket(await ticketFor(env, t.id, a.id), true);

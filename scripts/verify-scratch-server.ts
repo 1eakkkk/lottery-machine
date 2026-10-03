@@ -16,7 +16,10 @@ const origin = "https://scratch.example.test",
         BETTER_AUTH_SECRET: "synthetic-only-scratch-test-secret-32",
         RESEND_API_KEY: "synthetic-mail-key",
       },
-      serviceBindings: { ASSETS: (request: Request) => new Response(new URL(request.url).pathname) },
+      serviceBindings: {
+        ASSETS: (request: Request) =>
+          new Response(new URL(request.url).pathname),
+      },
       outboundService: async (request) => {
         assert.equal(new URL(request.url).hostname, "api.resend.com");
         mails.push((await request.json()) as { text: string });
@@ -52,13 +55,34 @@ const data = async (r: Response) => {
   },
   id = () => crypto.randomUUID();
 try {
-  check((await mf.dispatchFetch(origin + "/dev/scratch/")).status === 404, "Development lab unavailable in production");
-  check(await (await mf.dispatchFetch(origin + "/ticket/fixture")).text() === "/scratch/", "Metadata links route to scratch page");
-  check(await (await mf.dispatchFetch(origin + "/verify/fixture")).text() === "/scratch/", "Verification links route to scratch page");
-  const routes = JSON.parse(await readFile("wrangler.jsonc", "utf8")).assets.run_worker_first;
-  check(["/ticket/*", "/verify/*", "/dev/scratch/*"].every(path => routes.includes(path)), "Asset fallback cannot bypass protected scratch routes");
+  check(
+    (await mf.dispatchFetch(origin + "/dev/scratch/")).status === 404,
+    "Development lab unavailable in production",
+  );
+  check(
+    (await (await mf.dispatchFetch(origin + "/ticket/fixture")).text()) ===
+      "/scratch/",
+    "Metadata links route to scratch page",
+  );
+  check(
+    (await (await mf.dispatchFetch(origin + "/verify/fixture")).text()) ===
+      "/scratch/",
+    "Verification links route to scratch page",
+  );
+  const routes = JSON.parse(await readFile("wrangler.jsonc", "utf8")).assets
+    .run_worker_first;
+  check(
+    ["/ticket/*", "/verify/*", "/dev/scratch/*"].every((path) =>
+      routes.includes(path),
+    ),
+    "Asset fallback cannot bypass protected scratch routes",
+  );
   const db = await mf.getD1Database("DB");
-  for (const file of ["0001_accounts.sql", "0002_scratch.sql"])
+  for (const file of [
+    "0001_accounts.sql",
+    "0002_scratch.sql",
+    "0003_scratch_wallet.sql",
+  ])
     await db.exec(
       (await readFile("migrations/" + file, "utf8")).replace(/\r?\n/g, " "),
     );
@@ -79,6 +103,9 @@ try {
   const initB = await call("/workshop?game=xxf20"),
     cookieB = initB.headers.get("set-cookie")!.split(";")[0];
   await data(initB);
+  await db
+    .prepare("UPDATE scratch_wallets SET balance=100000 WHERE owner LIKE 'g:%'")
+    .run();
   const body = { game: "xxf20", bookNumber: 1, quantity: 10, requestId: id() },
     responses = await Promise.all([
       call("/take", body, cookie),
@@ -201,6 +228,29 @@ try {
     play.status === "PARTIAL" && play.play && !("validationCode" in play),
     "First scratch authorizes fixed print, keeps security secret",
   );
+  const sheetMask = "/".repeat(1024);
+  const sheetSaved = await data(
+    await call(
+      "/progress",
+      {
+        id: t.id,
+        masks: [...Array(25).fill(""), sheetMask],
+        revealed: Array(25).fill(false),
+      },
+      cookie,
+    ),
+  );
+  check(
+    sheetSaved.masks[25] === sheetMask,
+    "Continuous whole-sheet mask survives server save",
+  );
+  await data(
+    await call(
+      "/progress",
+      { id: t.id, masks: sheetSaved.masks, revealed: sheetSaved.revealed },
+      cookie,
+    ),
+  );
   check(!("reward" in play), "Summary award withheld until scratch completion");
   const again = await data(await call("/play", { id: t.id }, cookie));
   check(
@@ -279,6 +329,7 @@ try {
     await call("/progress", { id: winning.id, revealAll: true }, cookie),
   );
   await data(await call("/security", { id: winning.id }, cookie));
+  const beforeReward = await data(await call("/wallet", undefined, cookie));
   const redeems = await Promise.all(
     Array.from({ length: 5 }, () =>
       call("/redeem", { id: winning.id }, cookie).then(data),
@@ -301,7 +352,10 @@ try {
   const balance = await data(
     await call("/workshop?game=xxf20", undefined, cookie),
   );
-  check(balance.points === winning.prize, "Only verified claimed points count");
+  check(
+    balance.points === beforeReward.balance + winning.prize,
+    "Only verified claimed points count",
+  );
   await assert.rejects(() =>
     db
       .prepare("UPDATE scratch_tickets SET prize=999 WHERE id=?")
@@ -396,12 +450,19 @@ try {
   await data(login);
   const accountCookie = login.headers.get("set-cookie")!.split(";")[0],
     combined = accountCookie + "; " + cookie;
+  await data(await call("/daily", {}, cookie));
+  const beforeLink = await data(await call("/wallet", undefined, cookie));
   const linked = await data(
     await call("/workshop?game=xxf20", undefined, combined),
   );
   check(
-    linked.loggedIn && linked.points === winning.prize,
+    linked.loggedIn && linked.points === beforeLink.balance,
     "Guest claimed points associate with verified account",
+  );
+  check(
+    (await data(await call("/daily", {}, combined))).balance ===
+      beforeLink.balance,
+    "Guest daily eligibility follows account without double credit",
   );
   check(
     (
@@ -424,6 +485,116 @@ try {
     (await data(await call("/workshop?game=xxf20", undefined, cookie)))
       .points === 0,
     "Logged-out visitor starts separate account-free points",
+  );
+  const freshInit = await call("/workshop?game=xxf20"),
+    freshCookie = freshInit.headers.get("set-cookie")!.split(";")[0];
+  await data(freshInit);
+  check(
+    (await data(await call("/wallet", undefined, freshCookie))).balance === 0,
+    "New scratch balance starts zero",
+  );
+  const deniedBody = {
+    game: "xxf50",
+    bookNumber: 99,
+    quantity: 1,
+    requestId: id(),
+  };
+  check(
+    (await call("/take", deniedBody, freshCookie)).status === 402,
+    "Insufficient points cannot reserve stock",
+  );
+  check(
+    (
+      await data(
+        await call("/book?game=xxf50&number=99", undefined, freshCookie),
+      )
+    ).sold === 0,
+    "Insufficient points leave stock intact",
+  );
+  const dailyResults = await Promise.all(
+    Array.from({ length: 4 }, () => call("/daily", {}, freshCookie).then(data)),
+  );
+  check(
+    dailyResults.every((w) => w.balance === 1000 && w.dailyClaimed),
+    "Concurrent daily supply credits exactly once",
+  );
+  const manyBody = {
+    game: "xxf50",
+    bookNumber: 99,
+    quantity: 10,
+    requestId: id(),
+  };
+  await data(await call("/take", manyBody, freshCookie));
+  check(
+    (await data(await call("/wallet", undefined, freshCookie))).balance === 500,
+    "Ticket acquisition debits exact point cost",
+  );
+  await data(await call("/take", manyBody, freshCookie));
+  check(
+    (await data(await call("/wallet", undefined, freshCookie))).balance === 500,
+    "Replayed order does not debit twice",
+  );
+  const purchases = await Promise.all([
+    call("/take", { ...manyBody, requestId: id() }, freshCookie),
+    call("/take", { ...manyBody, requestId: id() }, freshCookie),
+  ]);
+  check(
+    purchases.filter((r) => r.status === 200).length === 1 &&
+      purchases.filter((r) => r.status === 402).length === 1,
+    "Concurrent spend cannot overdraw balance",
+  );
+  check(
+    (await data(await call("/wallet", undefined, freshCookie))).balance === 0,
+    "Balance remains nonnegative",
+  );
+  check(
+    (await data(await call("/daily", {}, freshCookie))).balance === 0,
+    "Repeated daily after spending cannot replenish again",
+  );
+  await assert.rejects(() =>
+    db
+      .prepare("UPDATE scratch_point_events SET delta=999 WHERE kind='DAILY'")
+      .run(),
+  );
+  checks++;
+  const refundInit = await call("/workshop?game=xxf50"),
+    refundCookie = refundInit.headers.get("set-cookie")!.split(";")[0],
+    refundWork = await data(refundInit);
+  await data(await call("/daily", {}, refundCookie));
+  const lastBook = refundWork.issue.id + ":29999";
+  await db
+    .prepare(
+      "INSERT INTO scratch_books (id,issue_id,book_number,total,cursor,status) VALUES (?,?,29999,20,18,'OPEN')",
+    )
+    .bind(lastBook, refundWork.issue.id)
+    .run();
+  const limitedOrder = {
+      game: "xxf50",
+      bookNumber: 30000,
+      quantity: 5,
+      requestId: id(),
+    },
+    limited = await data(await call("/take", limitedOrder, refundCookie));
+  check(
+    limited.tickets.length === 2,
+    "End of finite issue only gives remaining stock",
+  );
+  check(
+    (await data(await call("/wallet", undefined, refundCookie))).balance ===
+      900,
+    "Missing stock points refunded exactly",
+  );
+  await data(await call("/take", limitedOrder, refundCookie));
+  check(
+    (await data(await call("/wallet", undefined, refundCookie))).balance ===
+      900,
+    "Refund retry cannot credit again",
+  );
+  const { scratchDay } = await import("../server/scratch-wallet");
+  check(
+    scratchDay(new Date("2026-10-03T15:59:59Z")) === "2026-10-03" &&
+      scratchDay(new Date("2026-10-03T16:00:00Z")) === "2026-10-04",
+    "Daily rollover uses UTC+8",
   );
   console.log(
     `Scratch server integration passed: ${checks} checks in actual Workers / D1 runtime; concurrent stock, continuous book boundaries, replay, privacy, security, verified idempotent point claims, all ten editions.`,

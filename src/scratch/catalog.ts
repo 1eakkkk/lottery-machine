@@ -34,6 +34,7 @@ export interface ScratchGame {
   bonus: number;
   luckyCount: number;
   partialTiers?: boolean;
+  printStyle?: "burst-v2";
 }
 const hb = (id: number) =>
   `https://www.yzfcw.com/game/gglNewsContent?classficationId=82&newsId=${id}`;
@@ -65,7 +66,11 @@ const lucky = (x: number, y: number, w: number, h: number): Zone => ({
   kind: "lucky",
   index: 0,
 });
-const common = { paper: "#ffe4a7", accent: "#eac987" };
+const common = {
+  printStyle: "burst-v2" as const,
+  paper: "#ffe4a7",
+  accent: "#eac987",
+};
 export const CATALOG: ScratchGame[] = [
   {
     id: "xxf20",
@@ -362,15 +367,14 @@ export const CATALOG: ScratchGame[] = [
     rule: "刮出7得一倍、77得两倍、777得三倍。各格兼中兼得。暂只模拟已核实的部分奖级，完整表待补齐。",
     source:
       "https://www.sport.gov.cn/n20001280/n20745751/n20767297/c21179307/content.html",
-    art: "/scratch-art/tc7.jpg",
-    artSource:
-      "https://www.gdtcps.cn/data/news_img/image/20190425/20190425110909_375.jpg",
-    crop: full,
-    ratio: 153 / 318,
+    art: "/scratch-art/tc7-four.png",
+    artSource: "https://gdlottery.cn/u/cms/www/202608/191415525e79.png",
+    crop: { x: 0.75, y: 0, w: 0.25, h: 1 },
+    ratio: 0.5,
     zones: grid(5, 4, 0.055, 0.575, 0.145, 0.065, 0.19, 0.073),
     patches: [
       { x: 0.46, y: 0, w: 0.52, h: 0.049 },
-      { x: 0.57, y: 0.441, w: 0.4, h: 0.063 },
+      { x: 0.58, y: 0.425, w: 0.4, h: 0.085 },
       { x: 0.025, y: 0.873, w: 0.95, h: 0.05 },
     ],
     tiers: [1000000, 300, 50],
@@ -384,7 +388,7 @@ export const CATALOG: ScratchGame[] = [
 export const gameById = (id: string) =>
   CATALOG.find((g) => g.id === id) ?? CATALOG[0];
 export const ISSUE_SIZE = 600000,
-  PRINT_REVISION = "real-sim-1";
+  PRINT_REVISION = "real-sim-2";
 export interface PrizeTier {
   units: number;
   count: number;

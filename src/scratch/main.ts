@@ -10,6 +10,9 @@ import {
 import { Coating } from "./coating";
 import type { Progress } from "./storage";
 import type { PrintedTicket } from "./engine";
+import { markHtml, amountHtml } from "./printing";
+const displayRule = (s: string) =>
+  s.replaceAll("娱乐积分", "虚拟 ¥").replaceAll("积分", "¥");
 interface Ticket {
   id: string;
   gameId: string;
@@ -29,6 +32,22 @@ interface Ticket {
   reward?: number;
   play?: Omit<PrintedTicket, "reward">;
 }
+interface Wallet {
+  balance: number;
+  dailyAmount: number;
+  dailyClaimed: boolean;
+  day: string;
+  loggedIn: boolean;
+  events: {
+    id: string;
+    kind: string;
+    delta: number;
+    reference: string;
+    createdAt: string;
+  }[];
+}
+let wallet: Wallet | undefined,
+  guideStep = 0;
 interface Book {
   id: string;
   number: number;
@@ -110,6 +129,14 @@ let game = gameById(
   saveQueue = Promise.resolve(),
   saveError = false,
   toastTimer: ReturnType<typeof setTimeout>;
+class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 async function api<T>(path: string, body?: unknown): Promise<T> {
   const r = await fetch("/api/scratch" + path, {
     credentials: "same-origin",
@@ -120,7 +147,7 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
     signal: AbortSignal.timeout(20000),
   });
   const data = await r.json();
-  if (!r.ok) throw Error(data.message ?? "操作暂时未完成。");
+  if (!r.ok) throw new ApiError(r.status, data.message ?? "操作暂时未完成。");
   return data as T;
 }
 function toast(message: string) {
@@ -157,14 +184,14 @@ const qr = (url: string) => {
   return code.createSvgTag({ cellSize: 2, margin: 2, scalable: true });
 };
 document.querySelector("#app")!.innerHTML =
-  `<header class="site-header"><a class="brand" href="/"><span class="brand-icon">7</span>一刻开奖</a><nav aria-label="页面导航"><a href="/">开奖实验室</a><a aria-current="page" href="/scratch/">刮刮乐</a><a href="/?account=1" id="account-link">登录 / 注册</a></nav></header><main><section class="intro"><div><p class="eyebrow">PRINTED FIRST. REVEALED BY YOU.</p><h1>挑一本，慢慢刮。</h1><p class="lead">票已印好，免费领取。刮开后验票，确认领取娱乐积分。</p></div><span class="entertainment">纯娱乐 · 无兑换</span></section><div class="workshop-layout"><aside class="catalog-panel" aria-label="真实票种"><div class="panel-heading"><h2>挑个喜欢的</h2><span>${CATALOG.length} 个票面版本</span></div><div class="filters" role="group" aria-label="筛选玩法">${["全部", "符号", "号码", "连线"].map((f) => `<button data-filter="${f}" aria-pressed="${f === "全部"}">${f}</button>`).join("")}</div><div id="catalog" class="catalog"></div><div class="catalog-foot"><span>编号 → 印刷 → 涂膜 → 封册</span><p>服务端固化整批结果。<br>领到的是已有票号，刮擦只揭示印刷内容。</p></div></aside><section class="desk" aria-label="刮票桌面"><div class="desk-bar"><span>一刻 / 即开票模拟</span><button id="sound" class="quiet" aria-pressed="false">音效：关</button></div><div id="ticket-area" class="ticket-area"><p class="loading">正在读取发行批次…</p></div><div class="desk-footer"><span>鼠标拖动 / 手指涂抹</span><span id="points">娱乐积分：—</span></div></section><aside class="book-panel" aria-label="票册架" id="book-panel"><div class="panel-heading"><h2>票册架</h2><span id="stock-count"></span></div><p class="shelf-note" id="shelf-note"></p><div id="book-shelf" class="book-shelf"></div><div class="shelf-pager"><button id="shelf-prev" aria-label="上一组票册">←</button><span id="shelf-range"></span><button id="shelf-next" aria-label="下一组票册">→</button></div><form id="choose-book"><label for="book-number">按册号挑选</label><div><input id="book-number" type="number" inputmode="numeric" min="1" step="1" required><button>挑这本</button></div></form><div class="opened-heading">我领过的票 <span id="owned-count">0</span></div><div class="mine-filters"><label for="ticket-filter">状态</label><select id="ticket-filter"><option value="ALL">全部</option><option value="SOLD">未刮</option><option value="PARTIAL">刮了一部分</option><option value="SCRATCHED">待验票领取</option><option value="REDEEMED">已领取</option></select></div><div id="owned-tickets" class="opened-books"></div><button class="text-button" id="more-tickets" hidden>加载更早的票</button><p class="storage-note">票与刮擦进度保存在服务器。访客凭本机浏览器凭证访问；登录后自动保存到账户，支持跨设备查看。清除访客凭证后无法找回未关联账户的票。</p></aside></div><section class="explain"><div><p class="eyebrow">A FINITE ISSUE</p><h2>每张票，先有结果。</h2><p>按固定奖级数量建立有限奖组，服务端密钥把每个连续票号映射到唯一奖组位置。先确定结果，再印上能表达该奖级的数字和图符。换本、刷新、重新验票，都不会改变同一张票。</p><p>箱 → 盒 → 本 → 张是本站物流编排；分册及张数是模拟配置，不代表官方生产排布。</p></div><div><h3>真实票种，模拟分布</h3><p>名称、装饰字形和刮区参考发行机构公开票面，奖励改为娱乐积分。缺少完整官方奖组数量时，使用明确公开的本站模拟分布，不能代表真实票种中奖率，也没有每本保底。</p><p>不设钱包，不收费，不充值、不购买、不提现，积分不能转移或兑换。本站与福彩、体彩发行机构无关联。</p><button class="text-button" id="data-open">查看当前票种的发行数据与资料 ↗</button></div></section></main><footer><span>1EAK / 一刻开奖 · 虚拟模拟票，无现实兑奖价值</span><a href="https://github.com/1eakkkk/lottery-machine" target="_blank" rel="noopener">公开源码 ↗</a></footer><dialog id="data-dialog"><div class="dialog-head"><h2>发行数据</h2><button id="data-close" aria-label="关闭资料">×</button></div><div id="data-content"></div></dialog><dialog id="verify-dialog"><div class="dialog-head"><h2>一刻开奖 · 虚拟验票</h2><button id="verify-close" aria-label="关闭验票">×</button></div><div id="verify-content"></div></dialog><div id="toast" class="toast" role="status" hidden></div><div id="live" class="sr-only" role="status" aria-live="polite"></div>`;
+  `<header class="site-header"><a class="brand" href="/"><span class="brand-icon">7</span>一刻开奖</a><nav aria-label="页面导航"><a href="/">开奖实验室</a><a aria-current="page" href="/scratch/">刮刮乐</a><button class="quiet" id="guide-open">新手教程</button><button class="quiet" id="wallet-open">我的 ¥</button><a href="/?account=1" id="account-link">登录 / 注册</a></nav></header><main><section class="intro"><div><p class="eyebrow">PRINTED FIRST. REVEALED BY YOU.</p><h1>挑一本，慢慢刮。</h1><p class="lead">先领每日补给，选本领票；刮开后验票，确认领取虚拟 ¥。</p></div><span class="entertainment">¥ = 娱乐分值 · 无现金价值</span></section><div class="workshop-layout"><aside class="catalog-panel" aria-label="真实票种"><div class="panel-heading"><h2>挑个喜欢的</h2><span>${CATALOG.length} 个票面版本</span></div><div class="filters" role="group" aria-label="筛选玩法">${["全部", "符号", "号码", "连线"].map((f) => `<button data-filter="${f}" aria-pressed="${f === "全部"}">${f}</button>`).join("")}</div><div id="catalog" class="catalog"></div><div class="catalog-foot"><span>编号 → 印刷 → 涂膜 → 封册</span><p>服务端固化整批结果。<br>领到的是已有票号，刮擦只揭示印刷内容。</p></div></aside><section class="desk" aria-label="刮票桌面"><div class="desk-bar"><span>一刻 / 即开票模拟</span><button id="sound" class="quiet" aria-pressed="false">音效：关</button></div><div id="ticket-area" class="ticket-area"><p class="loading">正在读取发行批次…</p></div><div class="desk-footer"><span>鼠标拖动 / 手指涂抹</span><span id="points">虚拟 ¥：—</span></div></section><aside class="book-panel" aria-label="票册架" id="book-panel"><div class="panel-heading"><h2>票册架</h2><span id="stock-count"></span></div><p class="shelf-note" id="shelf-note"></p><div id="book-shelf" class="book-shelf"></div><div class="shelf-pager"><button id="shelf-prev" aria-label="上一组票册">←</button><span id="shelf-range"></span><button id="shelf-next" aria-label="下一组票册">→</button></div><form id="choose-book"><label for="book-number">按册号挑选</label><div><input id="book-number" type="number" inputmode="numeric" min="1" step="1" required><button>挑这本</button></div></form><div class="opened-heading">我领过的票 <span id="owned-count">0</span></div><div class="mine-filters"><label for="ticket-filter">状态</label><select id="ticket-filter"><option value="ALL">全部</option><option value="SOLD">未刮</option><option value="PARTIAL">刮了一部分</option><option value="SCRATCHED">待验票领取</option><option value="REDEEMED">已领取</option></select></div><div id="owned-tickets" class="opened-books"></div><button class="text-button" id="more-tickets" hidden>加载更早的票</button><p class="storage-note">票与刮擦进度保存在服务器。访客凭本机浏览器凭证访问；登录后自动保存到账户，支持跨设备查看。清除访客凭证后无法找回未关联账户的票。</p></aside></div><section class="explain"><div><p class="eyebrow">A FINITE ISSUE</p><h2>每张票，先有结果。</h2><p>按固定奖级数量建立有限奖组，服务端密钥把每个连续票号映射到唯一奖组位置。先确定结果，再印上能表达该奖级的数字和图符。换本、刷新、重新验票，都不会改变同一张票。</p><p>箱 → 盒 → 本 → 张是本站物流编排；分册及张数是模拟配置，不代表官方生产排布。</p></div><div><h3>真实票种，模拟分布</h3><p>名称、装饰字形和刮区参考发行机构公开票面，奖励改为虚拟 ¥。缺少完整官方奖组数量时，使用明确公开的本站模拟分布，不能代表真实票种中奖率，也没有每本保底。</p><p>虚拟 ¥ 仅用于刮刮乐，不能充值、提现、转移或兑换。摇奖机器不使用 ¥。本站与福彩、体彩发行机构无关联。</p><button class="text-button" id="data-open">查看当前票种的发行数据与资料 ↗</button></div></section></main><footer><span>1EAK / 一刻开奖 · 虚拟模拟票，无现实兑奖价值</span><a href="https://github.com/1eakkkk/lottery-machine" target="_blank" rel="noopener">公开源码 ↗</a></footer><dialog id="data-dialog"><div class="dialog-head"><h2>发行数据</h2><button id="data-close" aria-label="关闭资料">×</button></div><div id="data-content"></div></dialog><dialog id="verify-dialog"><div class="dialog-head"><h2>一刻开奖 · 虚拟验票</h2><button id="verify-close" aria-label="关闭验票">×</button></div><div id="verify-content"></div></dialog><dialog id="guide-dialog"><div class="dialog-head"><h2>第一次刮？跟着走一遍</h2><button id="guide-close" aria-label="关闭教程">×</button></div><div id="guide-content"></div></dialog><dialog id="wallet-dialog"><div class="dialog-head"><h2>我的 ¥</h2><button id="wallet-close" aria-label="关闭我的分值">×</button></div><div id="wallet-content"></div></dialog><div id="toast" class="toast" role="status" hidden></div><div id="live" class="sr-only" role="status" aria-live="polite"></div>`;
 function renderCatalog() {
   $("catalog").innerHTML = CATALOG.filter(
     (g) => filter === "全部" || g.family === filter,
   )
     .map(
       (g) =>
-        `<button class="catalog-card ${g.id === game.id ? "selected" : ""}" data-game="${g.id}" aria-pressed="${g.id === game.id}"><span class="mini-ticket real-mini" style="${artStyle(g)}"></span><span><strong>${g.title}</strong><small>${g.subtitle}</small></span></button>`,
+        `<button class="catalog-card ${g.id === game.id ? "selected" : ""}" data-game="${g.id}" aria-pressed="${g.id === game.id}"><span class="mini-ticket real-mini" style="${artStyle(g)}"></span><span><strong>${g.title}</strong><small>${displayRule(g.subtitle)}</small></span></button>`,
     )
     .join("");
   $("catalog")
@@ -199,10 +226,11 @@ async function switchGame(id: string) {
       ),
     );
     shelf = Math.floor((candidate - 1) / 6) * 6 + 1;
-    $("points").textContent = `娱乐积分：${n(workshop.points)}`;
+    $("points").textContent = `虚拟 ¥：${n(workshop.points)}`;
     $("account-link").textContent = workshop.loggedIn
       ? "我的账户"
       : "登录 / 注册";
+    await loadWallet();
     $("shelf-note").textContent =
       `${game.ticketsPerBook} 张 / 本 · 全站共享发行库存`;
     $("stock-count").textContent =
@@ -243,7 +271,7 @@ function renderMine() {
             `<button class="opened-book ${t.id === current?.id ? "active" : ""}" data-owned="${t.id}"><span>${pad(t.bookNumber, 5)} 本 / ${pad(t.ticketNumber)} 张</span><small>${({ SOLD: "未刮", PARTIAL: "刮了一部分", SCRATCHED: "待验票领取", REDEEMED: "已领取", VOID: "已作废", EXPIRED: "已过期" } as Record<string, string>)[t.status]}</small></button>`,
         )
         .join("")
-    : '<p class="empty-shelf">这里还没有票。<br>挑本册子，免费领一张。</p>';
+    : '<p class="empty-shelf">这里还没有票。<br>领补给，挑本册子，再领一张。</p>';
   $("owned-tickets")
     .querySelectorAll<HTMLButtonElement>("[data-owned]")
     .forEach((b) => (b.onclick = () => void selectTicket(b.dataset.owned!)));
@@ -299,11 +327,11 @@ async function selectBook(value: number) {
   await renderShelf();
 }
 function stockHtml() {
-  return `<div class="stock-controls"><div><strong>第 ${pad(book.number, 5)} 本</strong><small>箱 ${pad(book.boxNumber)} / 盒 ${pad(book.packNumber)} · 已领 ${book.sold} / ${book.total}</small></div><span>${book.next ? "下一张 " + pad(book.next) : "本册已发完"}</span></div><div class="take-actions">${[1, 5, 10].map((q) => `<button class="${q === 1 ? "primary" : "secondary"}" data-take="${q}">免费领 ${q} 张</button>`).join("")}<button class="quiet" id="change-book">换一本 ↗</button></div>`;
+  return `<div id="journey" class="journey"></div><div id="wallet-banner" class="wallet-banner"></div><div class="stock-controls"><div><strong>第 ${pad(book.number, 5)} 本</strong><small>箱 ${pad(book.boxNumber)} / 盒 ${pad(book.packNumber)} · 已领 ${book.sold} / ${book.total}</small></div><span>${book.next ? "下一张 " + pad(book.next) : "本册已发完"}</span></div><div class="take-actions">${[1, 5, 10].map((q) => `<button class="${q === 1 ? "primary" : "secondary"}" data-take="${q}">领 ${q} 张 · ¥${q * game.denomination}</button>`).join("")}<button class="quiet" id="change-book">换一本 ↗</button></div>`;
 }
 function referenceHtml(t?: Ticket) {
   const crops = game.crop;
-  return `<article class="reference-ticket mechanic-${game.mechanic}" style="${artStyle(game)}aspect-ratio:${game.ratio};--ticket-ink:${game.ink}" aria-label="${game.title} ${t ? "第" + t.ticketNumber + "张" : "未领取票面预览"}">${game.patches.map((r, i) => `<span class="art-patch patch-${i}" style="${rectStyle(r)}background:${game.ink}">${i === 0 ? game.denomination + "版 · 积分" : i === 1 ? "最高 " + n(game.tiers[0]) + " 积分" : game.rule}</span>`).join("")}${
+  return `<article class="reference-ticket mechanic-${game.mechanic}" style="${artStyle(game)}aspect-ratio:${game.ratio};--ticket-ink:${game.ink}" aria-label="${game.title} ${t ? "第" + t.ticketNumber + "张" : "未领取票面预览"}">${game.patches.map((r, i) => `<span class="art-patch patch-${i}" style="${rectStyle(r)}background:${game.ink}">${i === 0 ? "¥" + game.denomination : i === 1 ? "最高 ¥" + n(game.tiers[0]) : displayRule(game.rule)}</span>`).join("")}${
     t
       ? game.zones
           .map((z, i) => {
@@ -313,32 +341,32 @@ function referenceHtml(t?: Ticket) {
               z.w * crops.w,
               z.h * crops.h,
             ];
-            return `<div class="scratch-zone ${z.kind === "lucky" ? "lucky-zone" : ""} ${game.mechanic === "diamond" ? "row-zone" : ""} ${game.mechanic === "line" && z.kind === "round" && z.index < game.bonus ? "grid-zone" : ""}" data-round="${i}" data-art="${game.art}" data-crop="${crop.join(",")}" style="${rectStyle(z)}"><div class="printed" aria-hidden="true">${printedHtml(t, i)}</div><canvas aria-hidden="true"></canvas></div>`;
+            return `<div class="scratch-zone ${z.kind === "lucky" ? "lucky-zone" : ""} ${game.mechanic === "diamond" ? "row-zone" : ""} ${game.mechanic === "line" && z.kind === "round" && z.index < game.bonus ? "grid-zone" : ""}" data-round="${i}" data-art="${game.art}" data-crop="${crop.join(",")}" style="${rectStyle(z)}"><div class="printed" aria-hidden="true">${printedHtml(t, i)}</div></div>`;
           })
           .join("")
       : ""
-  }<div class="ticket-code-zone" style="background:${game.ink}">${t ? `<button class="security-cover" id="security" ${!["SCRATCHED", "REDEEMED"].includes(t.status) ? "disabled" : ""}>${t.securityAreaOpened ? "保安区已开启 · 验票" : "保安区 · 验票时开启"}</button><div class="logistics"><a href="/ticket/${encodeURIComponent(t.id)}" aria-label="物流票号信息">${qr(location.origin + "/ticket/" + encodeURIComponent(t.id))}</a><span>${escape(t.serial)}<br>虚拟模拟票 · 无现实兑奖价值</span></div>` : "<span>票面预览 · 免费领取后获得独立票号</span>"}</div></article>`;
+  } ${t ? `<canvas class="scratch-sheet" aria-hidden="true" data-art="${game.art}" data-crop="${[crops.x, crops.y, crops.w, crops.h].join(",")}"></canvas>` : ""}<div class="ticket-code-zone" style="background:${game.ink}">${t ? `<button class="security-cover" id="security" ${!["SCRATCHED", "REDEEMED"].includes(t.status) ? "disabled" : ""}>${t.securityAreaOpened ? "保安区已开启 · 验票" : "保安区 · 验票时开启"}</button><div class="logistics"><a href="/ticket/${encodeURIComponent(t.id)}" aria-label="物流票号信息">${qr(location.origin + "/ticket/" + encodeURIComponent(t.id))}</a><span>${escape(t.serial)}<br>虚拟模拟票 · 无现实兑奖价值</span></div>` : "<span>票面预览 · 领票后获得独立票号</span>"}</div></article>`;
 }
 function printedHtml(t: Ticket, i: number) {
   const z = game.zones[i],
     p = t.play;
   if (!p) return '<span class="print-wait">刮开揭示</span>';
   if (z.kind === "lucky")
-    return `<div class="marks">${p.lucky.map((mark) => `<span>${mark}</span>`).join("")}</div><small>中奖${game.mechanic === "line" ? "密码" : "号码"}</small>`;
+    return `<div class="marks">${p.lucky.map(markHtml).join("")}</div><small>中奖${game.mechanic === "line" ? "密码" : "号码"}</small>`;
   const r = p.rounds[z.index];
   if (game.mechanic === "line" && z.index < game.bonus)
-    return `<div class="printed-grid">${r.marks.map((m) => `<span>${m}</span>`).join("")}</div><div class="printed-award">${n(r.units)}<small>积分</small></div>`;
+    return `<div class="printed-grid">${r.marks.map((m) => `<span>${m}</span>`).join("")}</div>${amountHtml(r.units)}`;
   const direct =
     ["double", "mixed", "candy"].includes(game.mechanic) &&
     z.index < game.bonus;
-  return `<div class="marks ${direct ? "direct" : ""}">${r.marks.map((m) => `<span>${m === "给力手势" ? "✊" : m}</span>`).join("")}</div>${direct && r.units === 0 ? "" : `<div class="printed-award">${n(r.units)}<small>积分</small></div>`}`;
+  return `<div class="marks ${direct ? "direct" : ""}">${r.marks.map((m) => markHtml(game.mechanic === "seven" && /^[0-9]+$/.test(m) && !["7", "77", "777"].includes(m) ? m.padStart(2, "0") : m)).join("")}</div>${direct && r.units === 0 ? "" : amountHtml(r.units, direct)}`;
 }
 function renderDesk() {
   coating?.dispose();
   coating = undefined;
   const t = current;
   $("ticket-area").innerHTML =
-    `${stockHtml()}<div class="ticket-tools"><strong>${game.title}</strong><div><label for="brush">笔刷</label><select id="brush"><option value="12">细</option><option value="18" selected>中</option><option value="26">粗</option></select><button class="quiet" id="zoom">放大票面</button></div></div><div class="ticket-viewport"><div class="ticket-size" style="width:${zoom * 100}%">${referenceHtml(t)}</div></div><p class="face-caption">${t ? `本号 ${pad(t.bookNumber, 5)} · 张号 ${pad(t.ticketNumber)} · ${game.ticketsPerBook} 张 / 本` : "预览票面；领取后才能刮开。"} ${game.partialTiers ? "· 仅部分已核实奖级 · 原图清晰度有限" : ""}</p><p class="ticket-rule">${game.rule}</p>${t ? '<div id="ticket-result" class="ticket-result" role="status"></div><div class="ticket-actions"><button class="secondary" id="reveal">一键揭开</button><button class="secondary" id="verify">验票 / 领取积分</button><button class="primary" id="next">再领一张 →</button></div><button class="text-button" id="sync-retry" hidden>重新同步刮擦进度</button>' : '<p class="unseal-note">先领票，再刮。结果已经固定，不会按操作重新抽奖。</p>'}`;
+    `${stockHtml()}<div class="ticket-tools"><strong>${game.title}</strong><div><label for="brush">笔刷</label><select id="brush"><option value="12">细</option><option value="18" selected>中</option><option value="26">粗</option></select><button class="quiet" id="zoom">放大票面</button></div></div><div class="ticket-viewport"><div class="ticket-size" style="width:${zoom * 100}%">${referenceHtml(t)}</div></div><p class="face-caption">${t ? `本号 ${pad(t.bookNumber, 5)} · 张号 ${pad(t.ticketNumber)} · ${game.ticketsPerBook} 张 / 本` : "预览票面；领取后才能刮开。"} ${game.partialTiers ? "· 仅部分已核实奖级 · 底印参考仍在核对" : ""}</p><p class="ticket-rule">${displayRule(game.rule)}</p>${t ? `<div id="ticket-result" class="ticket-result" role="status"></div><div class="ticket-actions"><button class="secondary" id="reveal">一键揭开</button><button class="secondary" id="verify">验票 / 领取¥</button><button class="primary" id="next">再领一张 · ¥${game.denomination} →</button></div><button class="text-button" id="sync-retry" hidden>重新同步刮擦进度</button>` : '<p class="unseal-note">先领每日补给，再选本领票。每张票的结果已固定。</p>'}`;
   $("ticket-area")
     .querySelectorAll<HTMLButtonElement>("[data-take]")
     .forEach((b) => (b.onclick = () => void take(Number(b.dataset.take))));
@@ -363,6 +391,7 @@ function renderDesk() {
     brush = Number($<HTMLSelectElement>("brush").value);
     if (coating) coating.brushRadius = brush;
   };
+  renderJourney();
   if (t) {
     coating = new Coating(
       $("ticket-area"),
@@ -482,7 +511,7 @@ function updateResult(t: Ticket) {
   if (!$("ticket-result")) return;
   const complete = ["SCRATCHED", "REDEEMED"].includes(t.status);
   $("ticket-result").innerHTML = complete
-    ? `<span>${t.reward ? "这张有奖励" : "这张没有奖励"}</span><strong>${n(t.reward ?? 0)} <small>娱乐积分</small></strong><small>${t.status === "REDEEMED" ? "已确认领取" : "验票后确认领取"}</small>`
+    ? `<span>${t.reward ? "这张有奖励" : "这张没有奖励"}</span><strong>${n(t.reward ?? 0)} <small>虚拟 ¥</small></strong><small>${t.status === "REDEEMED" ? "已确认领取" : "验票后确认领取"}</small>`
     : '<span>印刷内容已固定</span><strong class="pending">慢慢刮，或者一键揭开。</strong>';
   $<HTMLButtonElement>("reveal").disabled = complete;
   $<HTMLButtonElement>("verify").disabled = !complete;
@@ -490,8 +519,9 @@ function updateResult(t: Ticket) {
   $("security").textContent = t.securityAreaOpened
     ? "保安区已开启 · 验票"
     : "保安区 · 验票时开启";
+  renderJourney();
   $("live").textContent = complete
-    ? `揭晓 ${t.reward} 娱乐积分`
+    ? `揭晓 ${t.reward} 虚拟 ¥`
     : "票已领取，等待刮开。";
 }
 async function take(quantity: number) {
@@ -536,6 +566,8 @@ async function take(quantity: number) {
     setLocal("scratch-book-" + id, String(candidate));
     book = await api<Book>(`/book?game=${id}&number=${candidate}`);
     shelf = Math.floor((candidate - 1) / 6) * 6 + 1;
+    workshop = await api<Workshop>(`/workshop?game=${id}`);
+    await loadWallet();
     await refreshMine();
     current = await api<Ticket>("/ticket/" + encodeURIComponent(first.id));
     setLocal("scratch-ticket-" + id, first.id);
@@ -545,7 +577,11 @@ async function take(quantity: number) {
       `已领取 ${response.tickets.length} 张连续库存票。${response.tickets.length > 1 ? "其余票在“我领过的票”中。" : ""}`,
     );
   } catch (e) {
-    toast((e as Error).message + " 若未完成，重试会继续原领取请求。");
+    if (e instanceof ApiError && [400, 402, 403, 404, 409].includes(e.status)) {
+      setLocal(keyName, "");
+      setLocal(keyName + "-body", "");
+      toast(e.message);
+    } else toast((e as Error).message + " 若未完成，重试会继续原领取请求。");
   } finally {
     busy = false;
   }
@@ -556,7 +592,7 @@ async function verify(t: Ticket) {
     const fresh = await api<Ticket>("/security", { id: t.id });
     storeCurrent(fresh);
     const content = $("verify-content");
-    content.innerHTML = `<p>本站模拟验票 · 无现实兑奖价值</p><dl class="verify-info"><dt>票种</dt><dd>${game.title}</dd><dt>票册 / 张号</dt><dd>${pad(fresh.bookNumber, 5)} / ${pad(fresh.ticketNumber)}</dd><dt>结果</dt><dd>${n(fresh.reward ?? 0)} 娱乐积分</dd><dt>状态</dt><dd id="verify-status">${fresh.status === "REDEEMED" ? "已确认领取" : "待确认领取"}</dd></dl><div class="verify-qr">${qr(location.origin + "/verify/" + fresh.validationCode)}</div><p class="code-string">${fresh.validationCode}</p><p class="code-string">印刷校验 SHA-256：${fresh.ticketDataHash}</p><button class="primary" id="redeem" ${fresh.status === "REDEEMED" ? "disabled" : ""}>${fresh.status === "REDEEMED" ? "已领取，不会重复计入" : "确认领取娱乐积分"}</button>`;
+    content.innerHTML = `<p>本站模拟验票 · 无现实兑奖价值</p><dl class="verify-info"><dt>票种</dt><dd>${game.title}</dd><dt>票册 / 张号</dt><dd>${pad(fresh.bookNumber, 5)} / ${pad(fresh.ticketNumber)}</dd><dt>结果</dt><dd>${n(fresh.reward ?? 0)} 虚拟 ¥</dd><dt>状态</dt><dd id="verify-status">${fresh.status === "REDEEMED" ? "已确认领取" : "待确认领取"}</dd></dl><div class="verify-qr">${qr(location.origin + "/verify/" + fresh.validationCode)}</div><p class="code-string">${fresh.validationCode}</p><p class="code-string">印刷校验 SHA-256：${fresh.ticketDataHash}</p><button class="primary" id="redeem" ${fresh.status === "REDEEMED" ? "disabled" : ""}>${fresh.status === "REDEEMED" ? "已领取，不会重复计入" : "确认领取虚拟 ¥"}</button>`;
     $<HTMLDialogElement>("verify-dialog").showModal();
     $("redeem").onclick = async () => {
       const b = $<HTMLButtonElement>("redeem");
@@ -568,7 +604,8 @@ async function verify(t: Ticket) {
         $("verify-status").textContent = "已确认领取";
         const w = await api<Workshop>(`/workshop?game=${game.id}`);
         workshop = w;
-        $("points").textContent = `娱乐积分：${n(w.points)}`;
+        await loadWallet();
+        $("points").textContent = `虚拟 ¥：${n(w.points)}`;
         toast("已确认领取，重复请求不会重复计入。");
       } catch (e) {
         b.disabled = false;
@@ -589,7 +626,7 @@ async function showData() {
   const i = workshop.issue,
     s = i.stats;
   $("data-content").innerHTML =
-    `<h3>${game.title}</h3><p><strong>本站模拟分布，非官方中奖张数。</strong>${game.partialTiers ? "仅使用已核实的3个奖级，完整官方奖级表待补齐。" : ""}奖励单位全部为娱乐积分。</p><div class="pool-stats"><div><b>${n(s.size)}</b><span>总发行张数</span></div><div><b>${(s.winRate * 100).toFixed(4)}%</b><span>有奖励张数占比</span></div></div><p>未中奖占比 ${(s.zeroRate * 100).toFixed(4)}%；等于版型基准积分占比 ${(s.equalRate * 100).toFixed(4)}%；高于基准占比 ${(s.aboveRate * 100).toFixed(4)}%。配置积分比例 ${(s.ratio * 100).toFixed(2)}%，由总奖励积分 /（张数 × 版型基准）计算，免费领票不涉及回本或盈利。</p><p>已发放 ${n(i.sold)} 张；库存 ${n(i.remaining)} 张。剩余各奖级数量默认不公开，避免从发放前后差额提前推断领取结果。</p><div class="table-wrap"><table><caption>模拟奖组 · 固定数量</caption><thead><tr><th>娱乐积分</th><th>张数</th><th>占比</th></tr></thead><tbody>${i.tiers.map((t) => `<tr><td>${t.units ? n(t.units) : "无奖励"}</td><td>${n(t.count)}</td><td>${((t.count / s.size) * 100).toFixed(5)}%</td></tr>`).join("")}</tbody></table></div><p>每本 ${game.ticketsPerBook} 张是本站模拟配置；100 本 / 箱、10 本 / 盒。未设置整本保底。不同游戏的奖组独立。</p><p class="code-string">批次 ${i.id}<br>发行时间 ${i.createdAt}<br>密钥承诺 SHA-256：${i.seedCommit}<br>配置与奖组 SHA-256：${i.poolHash}</p><p>批次密钥不公开；已预留售罄后公开验证字段。当前未提供全批次公开核验工具。</p><p class="source-line"><a href="${game.source}" target="_blank" rel="noopener">官方票种、规则与奖级资料 ↗</a> · <a href="${game.artSource}" target="_blank" rel="noopener">票面原图 ↗</a></p>${game.id === "tc7" ? "<p>300奖级：陕西体彩2021年公开活动资料；50奖级：竞彩网2019年宁夏活动资料。原图分辨率较低，放大清晰度暂有限。</p>" : ""}<p>原标题和装饰字直接使用公开票面字形；积分、生成数字和模拟验票说明为本站动态印字，不声称复制了发行方专用底印字体。</p>`;
+    `<h3>${game.title}</h3><p><strong>本站模拟分布，非官方中奖张数。</strong>${game.partialTiers ? "仅使用已核实的3个奖级，完整官方奖级表待补齐。" : ""}奖励单位全部为虚拟 ¥。</p><div class="pool-stats"><div><b>${n(s.size)}</b><span>总发行张数</span></div><div><b>${(s.winRate * 100).toFixed(4)}%</b><span>有奖励张数占比</span></div></div><p>未中奖占比 ${(s.zeroRate * 100).toFixed(4)}%；等于版型基准¥占比 ${(s.equalRate * 100).toFixed(4)}%；高于基准占比 ${(s.aboveRate * 100).toFixed(4)}%。配置¥比例 ${(s.ratio * 100).toFixed(2)}%，由总奖励¥ /（张数 × 版型基准）计算，¥ 仅为娱乐分值，不是现金。</p><p>已发放 ${n(i.sold)} 张；库存 ${n(i.remaining)} 张。剩余各奖级数量默认不公开，避免从发放前后差额提前推断领取结果。</p><div class="table-wrap"><table><caption>模拟奖组 · 固定数量</caption><thead><tr><th>虚拟 ¥</th><th>张数</th><th>占比</th></tr></thead><tbody>${i.tiers.map((t) => `<tr><td>${t.units ? n(t.units) : "无奖励"}</td><td>${n(t.count)}</td><td>${((t.count / s.size) * 100).toFixed(5)}%</td></tr>`).join("")}</tbody></table></div><p>每本 ${game.ticketsPerBook} 张是本站模拟配置；100 本 / 箱、10 本 / 盒。未设置整本保底。不同游戏的奖组独立。</p><p class="code-string">批次 ${i.id}<br>发行时间 ${i.createdAt}<br>密钥承诺 SHA-256：${i.seedCommit}<br>配置与奖组 SHA-256：${i.poolHash}</p><p>批次密钥不公开；已预留售罄后公开验证字段。当前未提供全批次公开核验工具。</p><p class="source-line"><a href="${game.source}" target="_blank" rel="noopener">官方票种、规则与奖级资料 ↗</a> · <a href="${game.artSource}" target="_blank" rel="noopener">票面原图 ↗</a></p>${game.id === "tc7" ? "<p>300奖级：陕西体彩2021年公开活动资料；50奖级：竞彩网2019年宁夏活动资料。票面改用广东体彩2026年公开票样；刮开后底印仍待高清实物样张继续核对。</p>" : ""}<p>原标题和装饰字直接使用公开票面字形；¥、生成数字和模拟验票说明为本站动态印字，不声称复制了发行方专用底印字体。</p>`;
   $<HTMLDialogElement>("data-dialog").showModal();
 }
 document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach(
@@ -650,6 +687,158 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 window.addEventListener("pagehide", () => coating?.flush());
+async function loadWallet() {
+  wallet = await api<Wallet>("/wallet");
+  $("points").textContent = `虚拟 ¥${n(wallet.balance)}`;
+  renderJourney();
+}
+function renderJourney() {
+  if (!$("journey")) return;
+  const step =
+    !wallet || (!wallet.dailyClaimed && wallet.balance === 0)
+      ? 0
+      : !current
+        ? 1
+        : current.status === "SOLD" || current.status === "PARTIAL"
+          ? 2
+          : current.status === "REDEEMED"
+            ? 4
+            : 3;
+  $("journey").innerHTML = [
+    "领取补给",
+    "选本领票",
+    "整片刮开",
+    "验票领取",
+    "完成",
+  ]
+    .map(
+      (label, i) =>
+        `<span class="${i === step ? "active" : i < step ? "done" : ""}"><b>${i + 1}</b>${label}</span>`,
+    )
+    .join("");
+  $("wallet-banner").innerHTML =
+    `<div><small>我的虚拟 ¥ · 仅用于刮刮乐</small><strong>¥${n(wallet?.balance ?? workshop?.points ?? 0)}</strong></div><button class="secondary" id="daily-claim" ${wallet?.dailyClaimed ? "disabled" : ""}>${wallet?.dailyClaimed ? "今日补给已领" : "领取今日 ¥" + n(wallet?.dailyAmount ?? 1000)}</button><button class="quiet" id="wallet-details">明细 ↗</button>`;
+  $("daily-claim").onclick = () => void daily();
+  $("wallet-details").onclick = () => void showWallet();
+}
+async function daily() {
+  const buttons = document.querySelectorAll<HTMLButtonElement>(
+    "[data-daily],#daily-claim",
+  );
+  buttons.forEach((b) => (b.disabled = true));
+  try {
+    wallet = await api<Wallet>("/daily", {});
+    $("points").textContent = `虚拟 ¥${n(wallet.balance)}`;
+    renderJourney();
+    if ($<HTMLDialogElement>("wallet-dialog").open) renderWallet();
+    toast(`今日补给已领取 · 虚拟 ¥${n(wallet.dailyAmount)}`);
+  } catch (e) {
+    toast((e as Error).message);
+    buttons.forEach((b) => (b.disabled = false));
+  }
+}
+function renderWallet() {
+  if (!wallet) return;
+  const kinds: Record<string, string> = {
+    DAILY: "每日补给",
+    TAKE: "领票扣除",
+    REFUND: "库存退回",
+    REWARD: "验票领取",
+    TRANSFER: "访客记录转入",
+  };
+  $("wallet-content").innerHTML =
+    `<p class="unit-note">¥ 代表本站娱乐分值，无现金价值；不能充值、提现或兑换。只用于刮刮乐。</p><div class="wallet-total"><span>当前可用</span><strong>¥${n(wallet.balance)}</strong></div><button class="primary" data-daily ${wallet.dailyClaimed ? "disabled" : ""}>${wallet.dailyClaimed ? "今天已领取补给" : "领取今日 ¥" + n(wallet.dailyAmount)}</button><p>每天北京时间 00:00 更新补给资格，余额会保留。领票按版型扣 ¥20／30／50；刮完验票后手动确认领取奖励。</p><p>最近 30 条明细</p><div class="wallet-history">${wallet.events.length ? wallet.events.map((e) => `<div><span><b>${kinds[e.kind] ?? "分值记录"}</b><small>${new Date(e.createdAt).toLocaleString("zh-CN")}${e.kind === "TAKE" ? " · " + escape(e.reference) : ""}</small></span><strong class="${e.delta < 0 ? "debit" : "credit"}">${e.delta >= 0 ? "+" : "−"}¥${n(Math.abs(e.delta))}</strong></div>`).join("") : "<p>还没有记录，先领取今日补给。</p>"}</div><p>${wallet.loggedIn ? "已保存到账户。" : "访客记录绑定本机浏览器，登录后可保存到账户。"}</p>`;
+  $("wallet-content").querySelector<HTMLButtonElement>(
+    "[data-daily]",
+  )!.onclick = () => void daily();
+}
+async function showWallet() {
+  try {
+    await loadWallet();
+    renderWallet();
+    $<HTMLDialogElement>("wallet-dialog").showModal();
+  } catch (e) {
+    toast((e as Error).message);
+  }
+}
+const GUIDE = [
+  {
+    title: "先领取今日补给",
+    text: "每天可免费领取虚拟 ¥1,000。这里的 ¥ 是娱乐分值，没有现金价值，不能充值或兑换。点桌面上的「领取今日」即可到账。",
+    glyph: "¥",
+    tip: "补给需要主动领取，每天北京时间 00:00 更新。",
+  },
+  {
+    title: "挑喜欢的票种，再挑一本",
+    text: "左侧选择喜相逢、体彩「7」等票种；票册架可以挑本号或换一本。每本的结果已经固定，换本不会重抽。",
+    glyph: "本",
+    tip: "手机上票种横向滑动，票册架在刮票桌面下方。",
+  },
+  {
+    title: "按张领取，扣除虚拟 ¥",
+    text: "可以领 1、5 或 10 张，按票面版型扣 ¥20／30／50。张号会连续接着上一张，不够一本时顺接下一本；其他票保存在「我领过的票」。",
+    glyph: "1 → 2",
+    tip: "先看可用 ¥；余额不够时减少张数，或等下一次每日补给。",
+  },
+  {
+    title: "像刮实物一样，划过整片",
+    text: "按住鼠标或用一根手指划动，跨格也能连续刮。数字和黑白图符是事先印好的。票面太小时可放大，也可以点「一键揭开」。",
+    glyph: "↗",
+    tip: "放大只改变票面；拖动刮区外的边缘可以移动查看。",
+  },
+  {
+    title: "刮完后，打开保安区验票",
+    text: "每个区域刮到足够面积会自动揭开。全部刮完后，「验票 / 领取 ¥」变成可用；点它会开启保安区并展示结果。",
+    glyph: "✓",
+    tip: "刮出奖励不会立刻加入余额，必须再确认领取。",
+  },
+  {
+    title: "确认领取，查看明细",
+    text: "核对票号、奖励和状态，点「确认领取虚拟 ¥」。只会增加一次；可以在「我的 ¥」查看补给、扣除和领取明细，再继续下一张。",
+    glyph: "+¥",
+    tip: "没有奖励的票也可以验票完成。登录后可跨设备查看。",
+  },
+];
+function renderGuide() {
+  const step = GUIDE[guideStep];
+  $("guide-content").innerHTML =
+    `<p class="unit-note">${guideStep + 1} / ${GUIDE.length} · 完整体验教程</p><div class="guide-art" aria-hidden="true">${step.glyph}</div><h3>${step.title}</h3><p>${step.text}</p><div class="guide-tip">${step.tip}</div><div class="guide-dots">${GUIDE.map((_, i) => `<button data-guide-step="${i}" aria-label="教程第 ${i + 1} 步" aria-current="${i === guideStep ? "step" : "false"}"></button>`).join("")}</div><div class="guide-actions"><button class="secondary" id="guide-prev" ${guideStep === 0 ? "disabled" : ""}>上一步</button><button class="primary" id="guide-next">${guideStep === GUIDE.length - 1 ? "开始体验" : "下一步"}</button></div>`;
+  $("guide-prev").onclick = () => {
+    guideStep--;
+    renderGuide();
+  };
+  $("guide-next").onclick = () => {
+    if (guideStep === GUIDE.length - 1) {
+      setLocal("scratch-guide-v2", "seen");
+      $<HTMLDialogElement>("guide-dialog").close();
+      $("ticket-area").scrollIntoView({ block: "start", behavior: "instant" });
+    } else {
+      guideStep++;
+      renderGuide();
+    }
+  };
+  $("guide-content")
+    .querySelectorAll<HTMLButtonElement>("[data-guide-step]")
+    .forEach(
+      (b) =>
+        (b.onclick = () => {
+          guideStep = Number(b.dataset.guideStep);
+          renderGuide();
+        }),
+    );
+}
+function showGuide() {
+  guideStep = 0;
+  renderGuide();
+  $<HTMLDialogElement>("guide-dialog").showModal();
+}
+$("guide-open").onclick = showGuide;
+$("guide-close").onclick = () => {
+  setLocal("scratch-guide-v2", "seen");
+  $<HTMLDialogElement>("guide-dialog").close();
+};
+$("wallet-open").onclick = () => void showWallet();
+$("wallet-close").onclick = () => $<HTMLDialogElement>("wallet-dialog").close();
 async function boot() {
   const match = location.pathname.match(/^\/(ticket|verify)\/(.+)$/);
   if (match) {
@@ -670,3 +859,8 @@ async function boot() {
   } else await switchGame(game.id);
 }
 void boot();
+if (
+  !getLocal("scratch-guide-v2") &&
+  !/^\/(ticket|verify)\//.test(location.pathname)
+)
+  showGuide();

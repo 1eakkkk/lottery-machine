@@ -2142,3 +2142,451 @@ dialog h3 {
     font-size: 11px;
   }
 }
+
+/* Fixed, self-hosted print faces keep bottom printing consistent on phones and desktops. */
+@font-face {
+  font-family: TicketNumbers;
+  src: url("/scratch-fonts/ticket-numbers.ttf") format("truetype");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: TicketSymbols;
+  src: url("/scratch-fonts/ticket-symbols.ttf") format("truetype");
+  font-weight: 900;
+  font-display: swap;
+}
+.reference-ticket .scratch-paper {
+  position: absolute;
+  background: #faf9ef;
+  z-index: 0;
+  pointer-events: none;
+}
+.reference-ticket .scratch-zone {
+  z-index: 1;
+  border-radius: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.reference-ticket .printed {
+  background: transparent;
+  padding: 1px;
+  gap: 0;
+}
+.reference-ticket .scratch-sheet {
+  position: absolute;
+  z-index: 2;
+  touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.reference-ticket .scratch-sheet.fully-scratched {
+  opacity: 0;
+  pointer-events: none;
+}
+.reference-ticket .art-patch {
+  pointer-events: none;
+  z-index: 3;
+}
+.reference-ticket .ticket-code-zone {
+  z-index: 3;
+}
+.reference-ticket .marks {
+  height: 58%;
+  gap: 2%;
+  font-family: TicketSymbols, sans-serif;
+  font-synthesis: none;
+}
+.reference-ticket .print-symbol {
+  height: 100%;
+  aspect-ratio: 1;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #171717;
+}
+.reference-ticket .print-symbol svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.reference-ticket .print-mark {
+  height: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.reference-ticket .print-mark b {
+  font-family: TicketSymbols, sans-serif;
+  font-weight: 900;
+  font-size: 4.8cqw;
+  line-height: 0.95;
+}
+.reference-ticket .print-number b {
+  font-family: TicketNumbers, sans-serif;
+  font-size: 5.3cqw;
+  letter-spacing: -0.025em;
+}
+.reference-ticket .print-mark small {
+  font:
+    700 1.2cqw TicketNumbers,
+    sans-serif;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+}
+.reference-ticket .printed-award {
+  font-family: TicketNumbers, sans-serif;
+  font-weight: 700;
+  font-size: var(--amount-size, 4.2cqw);
+  line-height: 1.04;
+  white-space: nowrap;
+  text-align: center;
+  letter-spacing: -0.03em;
+  max-width: 100%;
+}
+.reference-ticket .printed-award strong {
+  font: inherit;
+  display: block;
+}
+.reference-ticket .printed-award small {
+  font:
+    700 1.15cqw TicketNumbers,
+    sans-serif;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+}
+.reference-ticket .row-zone .marks {
+  height: 100%;
+  flex: 1;
+}
+.reference-ticket .row-zone .print-number b {
+  font-size: 4.2cqw;
+}
+.reference-ticket .row-zone .print-symbol {
+  height: 65%;
+  max-width: 16%;
+}
+.reference-ticket .row-zone .printed-award {
+  font-size: min(var(--amount-size), 3.2cqw);
+  min-width: 15%;
+}
+.reference-ticket .lucky-zone .marks {
+  height: 65%;
+}
+.reference-ticket .grid-zone .printed-grid {
+  height: 72%;
+  gap: 0;
+}
+.reference-ticket .printed-grid span {
+  font-family: TicketNumbers, sans-serif;
+  border: 0;
+  background: transparent;
+}
+.reference-ticket .grid-zone .printed-award {
+  font-size: 3.6cqw;
+}
+.reference-ticket .direct .print-symbol {
+  height: 100%;
+}
+.reference-ticket .marks.direct:empty {
+  display: none;
+}
+.reference-ticket .award-direct {
+  font-size: 5.3cqw;
+}
+.reference-ticket.mechanic-seven .print-number b {
+  font-size: 6cqw;
+}
+.reference-ticket.mechanic-seven .printed-award {
+  font-size: 4.6cqw;
+}
+.reference-ticket.mechanic-seven .print-mark small {
+  font-size: 1.25cqw;
+}
+.reference-ticket.mechanic-seven .scratch-paper {
+  background: #fafafa;
+}
+.reference-ticket.mechanic-seven .art-patch {
+  color: #151515;
+  background: #fff !important;
+  font-family: TicketNumbers, TicketSymbols, sans-serif;
+}
+.journey {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  margin: 0 0 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ccd4c380;
+}
+.journey span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #889084;
+  white-space: nowrap;
+}
+.journey b {
+  display: grid;
+  place-items: center;
+  border: 1px solid #c6cec0;
+  border-radius: 50%;
+  width: 19px;
+  height: 19px;
+  font-size: 10px;
+}
+.journey .active {
+  color: #254e3a;
+  font-weight: 700;
+}
+.journey .active b {
+  background: #254e3a;
+  color: #fff;
+  border-color: #254e3a;
+}
+.journey .done b {
+  background: #e4eadc;
+  color: #466047;
+}
+.wallet-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  margin: 0 0 18px;
+  background: #f8faf1;
+  border: 1px solid #d4dccb;
+  border-radius: 8px;
+}
+.wallet-banner > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-right: auto;
+}
+.wallet-banner small {
+  font-size: 10px;
+  color: #6d7b62;
+}
+.wallet-banner strong {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.wallet-banner button {
+  min-height: 40px;
+  padding: 9px 12px;
+  font-size: 11px;
+}
+.wallet-total {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 22px 0;
+}
+.wallet-total span {
+  font-size: 12px;
+  color: #637058;
+}
+.wallet-total strong {
+  font-size: 36px;
+  font-variant-numeric: tabular-nums;
+}
+.wallet-history > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid #d8dfd1;
+}
+.wallet-history span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wallet-history b {
+  font-size: 13px;
+}
+.wallet-history small {
+  font-size: 10px;
+  color: #718168;
+}
+.wallet-history strong {
+  white-space: nowrap;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.wallet-history .debit {
+  color: #a6683e;
+}
+.wallet-history .credit {
+  color: #28593d;
+}
+.unit-note {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #eaf0e1;
+  font-size: 11px !important;
+  line-height: 1.6;
+}
+#guide-dialog {
+  width: min(480px, calc(100vw - 24px));
+}
+.guide-art {
+  height: 100px;
+  background: repeating-linear-gradient(
+    135deg,
+    #e7eadf,
+    #e7eadf 12px,
+    #edf0e7 12px,
+    #edf0e7 24px
+  );
+  border-radius: 8px;
+  margin: 16px 0;
+  display: grid;
+  place-items: center;
+  font-size: 48px;
+  font-family: TicketNumbers, TicketSymbols, sans-serif;
+  font-weight: 700;
+  color: #31593d;
+}
+.guide-tip {
+  padding: 12px 14px;
+  background: #f0eadb;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: #685b37;
+}
+.guide-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+}
+.guide-actions button {
+  min-height: 44px;
+  min-width: 110px;
+}
+.guide-dots {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  margin-top: 14px;
+}
+.guide-dots button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  position: relative;
+}
+.guide-dots button::after {
+  content: "";
+  display: block;
+  width: 7px;
+  height: 7px;
+  background: #c0c9b8;
+  border-radius: 50%;
+  margin: auto;
+}
+.guide-dots button[aria-current="step"]::after {
+  background: #31593d;
+}
+.site-header nav .quiet {
+  font-size: inherit;
+  color: inherit;
+  min-height: 40px;
+}
+@media (max-width: 640px) {
+  .site-header {
+    align-items: flex-start;
+  }
+  .site-header nav {
+    max-width: 200px;
+    justify-content: flex-end;
+    gap: 0 9px;
+    font-size: 10px;
+  }
+  .site-header nav a,
+  .site-header nav .quiet {
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    padding: 0;
+  }
+  .journey {
+    gap: 2px;
+  }
+  .journey span {
+    flex-direction: column;
+    font-size: 8px;
+    gap: 4px;
+  }
+  .journey b {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+  }
+  .wallet-banner {
+    gap: 7px;
+    padding: 10px;
+  }
+  .wallet-banner strong {
+    font-size: 23px;
+  }
+  .wallet-banner button {
+    min-height: 44px;
+    font-size: 10px;
+    padding: 10px;
+  }
+  .ticket-tools > div {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .take-actions .primary,
+  .take-actions .secondary {
+    min-height: 44px;
+    padding: 11px 9px;
+    font-size: 10px;
+  }
+  .reference-ticket .printed-award {
+    font-size: var(--amount-size, 4.2cqw);
+  }
+  .reference-ticket .marks {
+    font-size: inherit;
+  }
+  .reference-ticket .art-patch.patch-0 {
+    font-size: 3.1cqw;
+  }
+  .ticket-viewport {
+    max-height: 700px;
+  }
+  dialog {
+    padding: 18px;
+  }
+  .guide-tip {
+    font-size: 11px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .guide-art,
+  .scratch-sheet {
+    animation: none;
+    transition: none;
+  }
+}
+
+body:has(dialog[open]) {
+  overflow: hidden;
+}
+#ticket-area {
+  scroll-margin-top: 16px;
+}
