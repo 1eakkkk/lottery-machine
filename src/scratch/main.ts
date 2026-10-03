@@ -669,6 +669,7 @@ async function showData() {
   try {
     workshop = await api<Workshop>(`/workshop?game=${game.id}`);
   } catch (e) {
+    $("data-content").innerHTML = `<p role="alert">${escape((e as Error).message)}</p>`;
     toast((e as Error).message);
     return;
   }
@@ -676,7 +677,6 @@ async function showData() {
     s = i.stats;
   $("data-content").innerHTML =
     `<h3>${game.title}</h3><p><strong>本站模拟分布，非官方中奖张数。</strong>${game.partialTiers ? "仅使用已核实的3个奖级，完整官方奖级表待补齐。" : ""}奖励单位全部为虚拟 ¥。</p><div class="pool-stats"><div><b>${n(s.size)}</b><span>总发行张数</span></div><div><b>${(s.winRate * 100).toFixed(4)}%</b><span>有奖励张数占比</span></div></div><p>未中奖占比 ${(s.zeroRate * 100).toFixed(4)}%；等于版型基准¥占比 ${(s.equalRate * 100).toFixed(4)}%；高于基准占比 ${(s.aboveRate * 100).toFixed(4)}%。配置¥比例 ${(s.ratio * 100).toFixed(2)}%，由总奖励¥ /（张数 × 版型基准）计算，¥ 仅为娱乐分值，不是现金。</p><p>已发放 ${n(i.sold)} 张；库存 ${n(i.remaining)} 张。剩余各奖级数量默认不公开，避免从发放前后差额提前推断领取结果。</p><div class="table-wrap"><table><caption>模拟奖组 · 固定数量</caption><thead><tr><th>虚拟 ¥</th><th>张数</th><th>占比</th></tr></thead><tbody>${i.tiers.map((t) => `<tr><td>${t.units ? n(t.units) : "无奖励"}</td><td>${n(t.count)}</td><td>${((t.count / s.size) * 100).toFixed(5)}%</td></tr>`).join("")}</tbody></table></div><p>每本 ${game.ticketsPerBook} 张是本站模拟配置；100 本 / 箱、10 本 / 盒。未设置整本保底。不同游戏的奖组独立。</p><p class="code-string">批次 ${i.id}<br>发行时间 ${i.createdAt}<br>密钥承诺 SHA-256：${i.seedCommit}<br>配置与奖组 SHA-256：${i.poolHash}</p><p>批次密钥不公开；已预留售罄后公开验证字段。当前未提供全批次公开核验工具。</p><p class="source-line"><a href="${game.source}" target="_blank" rel="noopener">官方票种、规则与奖级资料 ↗</a> · <a href="${game.artSource}" target="_blank" rel="noopener">票面原图 ↗</a></p>${game.id === "tc7" ? "<p>300奖级：陕西体彩2021年公开活动资料；50奖级：竞彩网2019年宁夏活动资料。票面改用广东体彩2026年公开票样；刮开后底印仍待高清实物样张继续核对。</p>" : ""}<p>原标题和装饰字直接使用公开票面字形；¥、生成数字和模拟验票说明为本站动态印字，不声称复制了发行方专用底印字体。</p>`;
-  $<HTMLDialogElement>("data-dialog").showModal();
 }
 document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach(
   (b) =>
