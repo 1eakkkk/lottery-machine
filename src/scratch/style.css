@@ -2164,6 +2164,7 @@ dialog h3 {
 }
 .reference-ticket .scratch-zone {
   z-index: 1;
+  background: transparent;
   border-radius: 0;
   overflow: visible;
   pointer-events: none;
