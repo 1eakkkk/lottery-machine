@@ -182,39 +182,47 @@ async function actor(
       ?.match(/(?:^|;\s*)yk_scratch=([a-f0-9]{64})(?:;|$)/)?.[1],
     token = raw ?? hex(),
     guest = "g:" + (await sha256(token));
-  await env.DB.prepare(
-    "INSERT OR IGNORE INTO scratch_actors (id,created_at) VALUES (?,?)",
+  const existing = await env.DB.prepare(
+    "SELECT a.user_id,w.owner AS wallet_owner,e.applied AS transferred FROM scratch_actors a LEFT JOIN scratch_wallets w ON w.owner=a.id LEFT JOIN scratch_point_events e ON e.id='transfer:'||a.id WHERE a.id=?",
   )
-    .bind(guest, now())
-    .run();
-  await ensureWallet(env, guest);
+    .bind(guest)
+    .first<{
+      user_id: string | null;
+      wallet_owner: string | null;
+      transferred: number | null;
+    }>();
+  if (!existing)
+    await env.DB.prepare(
+      "INSERT OR IGNORE INTO scratch_actors (id,created_at) VALUES (?,?)",
+    )
+      .bind(guest, now())
+      .run();
+  if (!existing?.wallet_owner) await ensureWallet(env, guest);
   const session = env.BETTER_AUTH_SECRET
     ? await createAuth(env).api.getSession({ headers: request.headers })
     : null;
   let id = guest;
   if (session?.user.emailVerified) {
     id = "u:" + session.user.id;
-    await env.DB.batch([
-      env.DB.prepare(
-        "INSERT OR IGNORE INTO scratch_actors (id,created_at) VALUES (?,?)",
-      ).bind(id, now()),
-      env.DB.prepare(
-        "UPDATE scratch_actors SET user_id=? WHERE id=? AND user_id IS NULL",
-      ).bind(id, guest),
-      env.DB.prepare(
-        "UPDATE scratch_tickets SET owner=? WHERE owner=? AND EXISTS(SELECT 1 FROM scratch_actors WHERE id=? AND user_id=?)",
-      ).bind(id, guest, guest, id),
-      env.DB.prepare(
-        "UPDATE scratch_orders SET owner=? WHERE owner=? AND EXISTS(SELECT 1 FROM scratch_actors WHERE id=? AND user_id=?)",
-      ).bind(id, guest, guest, id),
-    ]);
-    await transferWallet(env, guest, id);
+    if (existing?.user_id !== id || existing?.transferred !== 1) {
+      await env.DB.batch([
+        env.DB.prepare(
+          "INSERT OR IGNORE INTO scratch_actors (id,created_at) VALUES (?,?)",
+        ).bind(id, now()),
+        env.DB.prepare(
+          "UPDATE scratch_actors SET user_id=? WHERE id=? AND user_id IS NULL",
+        ).bind(id, guest),
+        env.DB.prepare(
+          "UPDATE scratch_tickets SET owner=? WHERE owner=? AND EXISTS(SELECT 1 FROM scratch_actors WHERE id=? AND user_id=?)",
+        ).bind(id, guest, guest, id),
+        env.DB.prepare(
+          "UPDATE scratch_orders SET owner=? WHERE owner=? AND EXISTS(SELECT 1 FROM scratch_actors WHERE id=? AND user_id=?)",
+        ).bind(id, guest, guest, id),
+      ]);
+      await transferWallet(env, guest, id);
+    }
   } else {
-    const linked = await env.DB.prepare(
-      "SELECT user_id FROM scratch_actors WHERE id=?",
-    )
-      .bind(guest)
-      .first<{ user_id: string | null }>();
+    const linked = existing;
     if (linked?.user_id) {
       const fresh = hex(),
         newId = "g:" + (await sha256(fresh));
@@ -567,6 +575,39 @@ export async function scratchApi(
           boxSize: 100,
           packSize: 10,
         },
+      };
+    } else if (path === "/books" && request.method === "GET") {
+      const issue = await getIssue(env, url.searchParams.get("game") ?? ""),
+        g = JSON.parse(issue.config) as ScratchGame,
+        p = JSON.parse(issue.prize_pool) as PrizePool,
+        start = Number(url.searchParams.get("start")) - 1,
+        total = p.size / g.ticketsPerBook;
+      if (!Number.isInteger(start) || start < 0 || start >= total)
+        fail(400, "册号无效。");
+      const rows = await env.DB.prepare(
+        "SELECT book_number,cursor,status FROM scratch_books WHERE issue_id=? AND book_number>=? AND book_number<?",
+      )
+        .bind(issue.id, start, Math.min(start + 6, total))
+        .all<{ book_number: number; cursor: number; status: string }>();
+      result = {
+        books: Array.from({ length: Math.min(6, total - start) }, (_, i) => {
+          const b = start + i,
+            saved = rows.results.find((r) => r.book_number === b),
+            sold = saved?.cursor ?? 0;
+          return {
+            id: `${issue.id}:${b}`,
+            gameId: g.id,
+            issueId: issue.id,
+            number: b + 1,
+            total: g.ticketsPerBook,
+            sold,
+            remaining: g.ticketsPerBook - sold,
+            status: saved?.status ?? "SEALED",
+            next: sold === g.ticketsPerBook ? null : sold + 1,
+            boxNumber: Math.floor(b / 100) + 1,
+            packNumber: Math.floor((b % 100) / 10) + 1,
+          };
+        }),
       };
     } else if (path === "/book" && request.method === "GET") {
       const issue = await getIssue(env, url.searchParams.get("game") ?? ""),

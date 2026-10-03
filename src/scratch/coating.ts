@@ -111,6 +111,7 @@ export class Coating {
   private frame = 0;
   private geometryDirty = false;
   private started = false;
+  private progressDirty = false;
   brushRadius = 18;
   constructor(
     private root: HTMLElement,
@@ -333,6 +334,7 @@ export class Coating {
       "fully-scratched",
       this.zones.every((_, i) => this.progress.revealed[i]),
     );
+    this.progressDirty = true;
     this.schedule();
   };
   private up = (event: PointerEvent) => {
@@ -348,8 +350,9 @@ export class Coating {
     clearTimeout(this.timer);
     this.timer = setTimeout(() => this.flush(), 500);
   }
-  flush() {
-    if (this.disposed) return;
+  flush(force = false) {
+    if (this.disposed || (!this.progressDirty && !force)) return;
+    this.progressDirty = false;
     clearTimeout(this.timer);
     this.progress.masks = this.buffers.map(encodeMask);
     this.changed(
@@ -359,11 +362,13 @@ export class Coating {
     );
   }
   revealAll() {
+    this.progressDirty = true;
     this.zones.forEach((_, i) => (this.progress.revealed[i] = true));
     this.resize();
     this.flush();
   }
   revealRegion(index: number) {
+    this.progressDirty = true;
     this.progress.revealed[index] = true;
     this.resize();
     this.flush();

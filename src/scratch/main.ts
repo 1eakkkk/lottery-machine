@@ -127,6 +127,8 @@ let game = gameById(
   zoom = 1,
   playing: Promise<void> | undefined,
   saveQueue = Promise.resolve(),
+  pendingSaves = new Map<string, { ticket: Ticket; progress: Progress }>(),
+  saving = false,
   saveError = false,
   toastTimer: ReturnType<typeof setTimeout>;
 class ApiError extends Error {
@@ -206,7 +208,6 @@ async function switchGame(id: string) {
   const token = ++generation;
   coating?.dispose();
   coating = undefined;
-  await saveQueue;
   if (token !== generation) return;
   game = gameById(id);
   current = undefined;
@@ -230,7 +231,6 @@ async function switchGame(id: string) {
     $("account-link").textContent = workshop.loggedIn
       ? "我的账户"
       : "登录 / 注册";
-    await loadWallet();
     $("shelf-note").textContent =
       `${game.ticketsPerBook} 张 / 本 · 全站共享发行库存`;
     $("stock-count").textContent =
@@ -240,9 +240,8 @@ async function switchGame(id: string) {
     );
     $<HTMLInputElement>("book-number").placeholder =
       `1 — ${n(workshop.issue.issued / game.ticketsPerBook)}`;
-    await refreshMine();
-    if (token !== generation) return;
-    await selectBook(candidate);
+    await Promise.all([loadWallet(), refreshMine(), selectBook(candidate)]);
+    if (game.id !== id) return;
     const saved = getLocal("scratch-ticket-" + id);
     if (saved) await selectTicket(saved);
   } catch (e) {
@@ -280,11 +279,8 @@ async function renderShelf() {
   const id = game.id,
     total = workshop.issue.issued / game.ticketsPerBook,
     start = shelf,
-    list = await Promise.all(
-      Array.from({ length: Math.min(6, total - start + 1) }, (_, i) =>
-        api<Book>(`/book?game=${id}&number=${start + i}`),
-      ),
-    );
+    list = (await api<{ books: Book[] }>(`/books?game=${id}&start=${start}`))
+      .books;
   if (id !== game.id || shelf !== start) return;
   $("book-shelf").innerHTML = list
     .map(
@@ -310,7 +306,8 @@ async function selectBook(value: number) {
     return toast(`请输入 1 到 ${n(max)} 的整数本号。`);
   coating?.dispose();
   coating = undefined;
-  await saveQueue;
+  $("ticket-area").innerHTML =
+    '<p class="loading" role="status">正在打开这本票…</p>';
   const id = game.id,
     b = await api<Book>(`/book?game=${id}&number=${value}`).catch((e) => {
       toast(e.message);
@@ -324,7 +321,7 @@ async function selectBook(value: number) {
   current = undefined;
   renderDesk();
   renderMine();
-  await renderShelf();
+  void renderShelf().catch((e) => toast(e.message));
 }
 function stockHtml() {
   return `<div id="journey" class="journey"></div><div id="wallet-banner" class="wallet-banner"></div><div class="stock-controls"><div><strong>第 ${pad(book.number, 5)} 本</strong><small>箱 ${pad(book.boxNumber)} / 盒 ${pad(book.packNumber)} · 已领 ${book.sold} / ${book.total}</small></div><span>${book.next ? "下一张 " + pad(book.next) : "本册已发完"}</span></div><div class="take-actions">${[1, 5, 10].map((q) => `<button class="${q === 1 ? "primary" : "secondary"}" data-take="${q}">领 ${q} 张 · ¥${q * game.denomination}</button>`).join("")}<button class="quiet" id="change-book">换一本 ↗</button></div>`;
@@ -407,7 +404,7 @@ function renderDesk() {
     $("verify").onclick = () => void verify(t);
     $("security").onclick = () => void verify(t);
     $("next").onclick = () => void take(1);
-    $("sync-retry").onclick = () => coating?.flush();
+    $("sync-retry").onclick = () => coating?.flush(true);
     updateResult(t);
   }
 }
@@ -415,8 +412,7 @@ async function selectTicket(id: string) {
   if (busy) return;
   coating?.dispose();
   coating = undefined;
-  await saveQueue;
-  const token = generation;
+  const token = ++generation;
   try {
     const t = await api<Ticket>("/ticket/" + encodeURIComponent(id));
     if (token !== generation || t.gameId !== game.id) return;
@@ -464,29 +460,40 @@ async function loadPlay(t: Ticket) {
 }
 function saveProgress(t: Ticket, p: Progress) {
   if (!p.masks.some(Boolean) && !p.revealed.some(Boolean)) return;
-  saveQueue = saveQueue
-    .catch(() => {})
-    .then(async () => {
-      try {
-        const next = await api<Ticket>("/progress", {
-          id: t.id,
-          masks: p.masks,
-          revealed: p.revealed,
-        });
-        storeCurrent(next);
-        saveError = false;
-      } catch (e) {
-        saveError = true;
-        toast((e as Error).message);
+  // A later snapshot already includes earlier strokes: retain one pending snapshot per ticket.
+  pendingSaves.set(t.id, { ticket: t, progress: p });
+  if (saving) return;
+  saving = true;
+  saveQueue = (async () => {
+    try {
+      while (pendingSaves.size) {
+        const [id, entry] = pendingSaves.entries().next().value!;
+        pendingSaves.delete(id);
+        try {
+          const next = await api<Ticket>("/progress", {
+            id,
+            masks: entry.progress.masks,
+            revealed: entry.progress.revealed,
+          });
+          storeCurrent(next);
+          saveError = false;
+        } catch (e) {
+          saveError = true;
+          toast((e as Error).message);
+        }
+        if (current?.id === id && $("sync-retry"))
+          $("sync-retry").hidden = !saveError;
       }
-      if (current?.id === t.id && $("sync-retry"))
-        $("sync-retry").hidden = !saveError;
-    });
+    } finally {
+      saving = false;
+    }
+  })();
 }
 async function reveal(t: Ticket) {
   if (busy) return;
   busy = true;
   $<HTMLButtonElement>("reveal").disabled = true;
+  $("reveal").textContent = "正在揭开…";
   try {
     await saveQueue;
     const next = await api<Ticket>("/progress", { id: t.id, revealAll: true });
@@ -500,6 +507,7 @@ async function reveal(t: Ticket) {
     toast((e as Error).message);
   } finally {
     busy = false;
+    if ($("reveal")) $("reveal").textContent = "一键揭开";
     if ($("reveal"))
       $<HTMLButtonElement>("reveal").disabled = [
         "SCRATCHED",
@@ -530,6 +538,16 @@ async function take(quantity: number) {
   const id = game.id,
     keyName = `scratch-request-${id}`;
   coating?.flush();
+  const takeButtons = Array.from(
+    document.querySelectorAll<HTMLButtonElement>("[data-take],#next"),
+  );
+  takeButtons.forEach((b) => {
+    b.disabled = true;
+    b.dataset.label = b.textContent ?? "";
+  });
+  const activeButton =
+    takeButtons.find((b) => b.dataset.take === String(quantity)) ?? $("next");
+  if (activeButton) activeButton.textContent = "正在领票…";
   try {
     await saveQueue;
     let requestId = getLocal(keyName) || undefined,
@@ -564,15 +582,32 @@ async function take(quantity: number) {
           )
         : last.bookNumber;
     setLocal("scratch-book-" + id, String(candidate));
-    book = await api<Book>(`/book?game=${id}&number=${candidate}`);
+    // The committed order already returns this ticket; display it without fetching it again.
+    current = first;
+    mine = [
+      ...response.tickets,
+      ...mine.filter((t) => !response.tickets.some((n) => n.id === t.id)),
+    ];
+    const sold = candidate !== last.bookNumber ? 0 : last.ticketNumber;
+    book = {
+      ...book,
+      number: candidate,
+      total: game.ticketsPerBook,
+      sold,
+      remaining: game.ticketsPerBook - sold,
+      next: sold === game.ticketsPerBook ? null : sold + 1,
+      boxNumber: Math.floor((candidate - 1) / 100) + 1,
+      packNumber: Math.floor(((candidate - 1) % 100) / 10) + 1,
+    };
     shelf = Math.floor((candidate - 1) / 6) * 6 + 1;
-    workshop = await api<Workshop>(`/workshop?game=${id}`);
-    await loadWallet();
-    await refreshMine();
-    current = await api<Ticket>("/ticket/" + encodeURIComponent(first.id));
     setLocal("scratch-ticket-" + id, first.id);
     renderDesk();
-    await renderShelf();
+    renderMine();
+    document
+      .querySelectorAll<HTMLButtonElement>("[data-take],#next")
+      .forEach((b) => (b.disabled = true));
+    await loadWallet();
+    void renderShelf().catch((e) => toast(e.message));
     toast(
       `已领取 ${response.tickets.length} 张连续库存票。${response.tickets.length > 1 ? "其余票在“我领过的票”中。" : ""}`,
     );
@@ -584,16 +619,28 @@ async function take(quantity: number) {
     } else toast((e as Error).message + " 若未完成，重试会继续原领取请求。");
   } finally {
     busy = false;
+    takeButtons.forEach((b) => {
+      b.disabled = false;
+      b.textContent = b.dataset.label ?? b.textContent;
+    });
+    document
+      .querySelectorAll<HTMLButtonElement>("[data-take],#next")
+      .forEach((b) => (b.disabled = false));
   }
 }
 async function verify(t: Ticket) {
+  const dialog = $<HTMLDialogElement>("verify-dialog");
+  if (dialog.open) return;
+  $("verify-content").innerHTML =
+    '<p class="loading" role="status">正在校验票号与刮擦记录…</p>';
+  dialog.showModal();
   try {
     await saveQueue;
     const fresh = await api<Ticket>("/security", { id: t.id });
     storeCurrent(fresh);
     const content = $("verify-content");
     content.innerHTML = `<p>本站模拟验票 · 无现实兑奖价值</p><dl class="verify-info"><dt>票种</dt><dd>${game.title}</dd><dt>票册 / 张号</dt><dd>${pad(fresh.bookNumber, 5)} / ${pad(fresh.ticketNumber)}</dd><dt>结果</dt><dd>${n(fresh.reward ?? 0)} 虚拟 ¥</dd><dt>状态</dt><dd id="verify-status">${fresh.status === "REDEEMED" ? "已确认领取" : "待确认领取"}</dd></dl><div class="verify-qr">${qr(location.origin + "/verify/" + fresh.validationCode)}</div><p class="code-string">${fresh.validationCode}</p><p class="code-string">印刷校验 SHA-256：${fresh.ticketDataHash}</p><button class="primary" id="redeem" ${fresh.status === "REDEEMED" ? "disabled" : ""}>${fresh.status === "REDEEMED" ? "已领取，不会重复计入" : "确认领取虚拟 ¥"}</button>`;
-    $<HTMLDialogElement>("verify-dialog").showModal();
+
     $("redeem").onclick = async () => {
       const b = $<HTMLButtonElement>("redeem");
       b.disabled = true;
@@ -602,10 +649,7 @@ async function verify(t: Ticket) {
         storeCurrent(redeemed);
         b.textContent = "已确认领取";
         $("verify-status").textContent = "已确认领取";
-        const w = await api<Workshop>(`/workshop?game=${game.id}`);
-        workshop = w;
         await loadWallet();
-        $("points").textContent = `虚拟 ¥：${n(w.points)}`;
         toast("已确认领取，重复请求不会重复计入。");
       } catch (e) {
         b.disabled = false;
@@ -613,10 +657,15 @@ async function verify(t: Ticket) {
       }
     };
   } catch (e) {
+    $("verify-content").innerHTML =
+      `<p role="alert">${escape((e as Error).message)}</p><p>关闭后可重新验票。</p>`;
     toast((e as Error).message);
   }
 }
 async function showData() {
+  if ($<HTMLDialogElement>("data-dialog").open) return;
+  $("data-content").innerHTML = '<p class="loading">正在读取发行数据…</p>';
+  $<HTMLDialogElement>("data-dialog").showModal();
   try {
     workshop = await api<Workshop>(`/workshop?game=${game.id}`);
   } catch (e) {
@@ -725,7 +774,10 @@ async function daily() {
   const buttons = document.querySelectorAll<HTMLButtonElement>(
     "[data-daily],#daily-claim",
   );
-  buttons.forEach((b) => (b.disabled = true));
+  buttons.forEach((b) => {
+    b.disabled = true;
+    b.textContent = "正在领取…";
+  });
   try {
     wallet = await api<Wallet>("/daily", {});
     $("points").textContent = `虚拟 ¥${n(wallet.balance)}`;
@@ -734,7 +786,8 @@ async function daily() {
     toast(`今日补给已领取 · 虚拟 ¥${n(wallet.dailyAmount)}`);
   } catch (e) {
     toast((e as Error).message);
-    buttons.forEach((b) => (b.disabled = false));
+    renderJourney();
+    if ($<HTMLDialogElement>("wallet-dialog").open) renderWallet();
   }
 }
 function renderWallet() {
@@ -753,10 +806,14 @@ function renderWallet() {
   )!.onclick = () => void daily();
 }
 async function showWallet() {
+  const dialog = $<HTMLDialogElement>("wallet-dialog");
+  if (dialog.open) return;
+  if (wallet) renderWallet();
+  else $("wallet-content").innerHTML = '<p class="loading">正在读取余额…</p>';
+  dialog.showModal();
   try {
     await loadWallet();
     renderWallet();
-    $<HTMLDialogElement>("wallet-dialog").showModal();
   } catch (e) {
     toast((e as Error).message);
   }

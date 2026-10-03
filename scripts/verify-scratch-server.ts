@@ -590,6 +590,31 @@ try {
       900,
     "Refund retry cannot credit again",
   );
+  const shelf = await data(
+    await call("/books?game=xxf50&start=29997", undefined, refundCookie),
+  );
+  check(
+    shelf.books.length === 4 && shelf.books.at(-1).number === 30000,
+    "Shelf batch clips at finite issue boundary",
+  );
+  for (const b of shelf.books) {
+    const single = await data(
+      await call(
+        `/book?game=xxf50&number=${b.number}`,
+        undefined,
+        refundCookie,
+      ),
+    );
+    check(
+      JSON.stringify(b) === JSON.stringify(single),
+      "Batched shelf preserves live shared-stock data",
+    );
+  }
+  check(
+    (await call("/books?game=xxf50&start=0", undefined, refundCookie))
+      .status === 400,
+    "Invalid shelf start rejected",
+  );
   const { scratchDay } = await import("../server/scratch-wallet");
   check(
     scratchDay(new Date("2026-10-03T15:59:59Z")) === "2026-10-03" &&
