@@ -9,18 +9,20 @@ export const TUBE_RADIUS=.106;
 export const TRAY = { centerX: -.5, halfLength: .9, halfWidth: .095, y: .63, slope: .10, wallY: .83, wallHalfHeight: .175 };
 export type Phase = 'ready' | 'loading' | 'mixing' | 'red' | 'blue' | 'third' | 'complete' | 'failed';
 export type DrawEvent = { color: 'red' | 'blue'; number: number; tick: number; zone?: number; special?: boolean };
-export type Snapshot = { tick: number; phase: Phase; gate: boolean[]; outlet: boolean[]; balls: number[]; events: DrawEvent[]; seed: number; error?: string; rotorRotations?: number[][]; activeZone?: number };
+export type Snapshot = { tick: number; phase: Phase; gate: boolean[]; outlet: boolean[]; balls: number[]; events: DrawEvent[]; seed: number; error?: string; rotorRotations?: number[][]; activeZone?: number; captureHeads?:number[][] };
 export function randomGenerator(seed: number) {
   let a = seed >>> 0;
   return () => { a = (a + 0x6D2B79F5) >>> 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t ^= t + Math.imul(t ^ (t >>> 7), 61 | t); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 export function dltLoadingPosition(slot:number,count:number) {
-  const columns=count===35?7:4, column=slot%columns, layer=Math.floor(slot/columns),angle=column*Math.PI*2/columns;
+  const columns=count===35?7:4, column=slot%columns, layer=Math.floor(slot/columns),angle=column*Math.PI*2/columns+(count===12?Math.PI/4:0);
   return {x:.60*Math.cos(angle),y:3.58+layer*.19,z:.60*Math.sin(angle)};
 }
-export const DLT_PORT_Y=3.52;
-export const DLT_TRAY={...TRAY,y:1.03,wallY:1.28,wallHalfHeight:.32};
-export const DLT_CHUTE=[[0,1.90],[0,1.72],[.08,1.57],[.25,1.46],[.30,1.38],[.30,1.32]] as const;
+export const DLT_PORT_Y=3.45;
+export const DLT_TRAY={...TRAY,centerX:-.35,halfLength:1.1,y:1.03,wallY:1.28,wallHalfHeight:.32};
+// Exterior left-hand route and lower right-hand bend, traced from the replay.
+// Dimensions are model parameters, not manufacturer measurements.
+export const DLT_CHUTE=[[-.20,4.05],[-.42,3.92],[-.70,3.77],[-1.02,3.42],[-1.26,2.98],[-1.30,2.60],[-1.20,2.23],[-.94,1.96],[-.55,1.83],[0,1.80],[.48,1.66],[.60,1.45],[.60,1.32]] as const;
 export function dltChuteGeometry() {
   const points:number[][]=[],vertices:number[]=[],indices:number[]=[],slices=32;
   for(let segment=0;segment<DLT_CHUTE.length-1;segment++)for(let step=0;step<12;step++) {
@@ -30,7 +32,8 @@ export function dltChuteGeometry() {
   points.push([...DLT_CHUTE.at(-1)!]);
   points.forEach(([x,y],i)=> {
     const before=points[Math.max(0,i-1)],after=points[Math.min(points.length-1,i+1)],dx=after[0]-before[0],dy=after[1]-before[1],length=Math.hypot(dx,dy);
-    for(let j=0;j<=slices;j++) {const a=j/slices*Math.PI*2;vertices.push(x-dy/length*TUBE_RADIUS*Math.cos(a),y+dx/length*TUBE_RADIUS*Math.cos(a),TUBE_RADIUS*Math.sin(a));}
+    const radius=i<24?.19-(.19-.125)*Math.max(0,(i-12)/12):.125;
+    for(let j=0;j<=slices;j++) {const a=j/slices*Math.PI*2;vertices.push(x-dy/length*radius*Math.cos(a),y+dx/length*radius*Math.cos(a),radius*Math.sin(a));}
   });
   for(let i=0;i<points.length-1;i++)for(let j=0;j<slices;j++){const a=i*(slices+1)+j,b=a+slices+1;indices.push(a,b,a+1,a+1,b,b+1);}
   return {vertices:new Float32Array(vertices),indices:new Uint32Array(indices)};
@@ -44,7 +47,7 @@ function shellGeometry(venus=false,loadingCap=false) {
   const vertices: number[] = [], indices: number[] = [], rows = 16, slices = 48;
   const bottomAngle = loadingCap?.78:Math.acos((FLOOR_Y - CENTER_Y) / CHAMBER_RADIUS);
   for (let row = 0; row <= rows; row++) for (let col = 0; col <= slices; col++) {
-    const topAngle=venus?.78:0;
+    const topAngle=venus&&!loadingCap?.78:0;
     const a = topAngle+row / rows * (bottomAngle-topAngle), b = col / slices * Math.PI * 2;
     vertices.push(CHAMBER_RADIUS * Math.sin(a) * Math.cos(b), CENTER_Y + CHAMBER_RADIUS * Math.cos(a), CHAMBER_RADIUS * Math.sin(a) * Math.sin(b));
   }
@@ -68,9 +71,9 @@ export function floorGeometry(venus=false) {
   }
   return {vertices:new Float32Array(vertices),indices:new Uint32Array(indices)};
 }
-export function tubeGeometry(venus=false){
-  const vertices:number[]=[],indices:number[]=[],slices=32,rings=venus?[[DLT_PORT_Y,.20],[DLT_PORT_Y-.13,TUBE_RADIUS],[1.90,TUBE_RADIUS]]:[[FLOOR_Y,PORT_RADIUS],[FLOOR_Y-.13,TUBE_RADIUS],[1.02,TUBE_RADIUS]];
-  for(const [y,r]of rings)for(let i=0;i<=slices;i++){const a=i/slices*Math.PI*2;vertices.push(r*Math.cos(a),y,(venus?0:PORT_Z)+r*Math.sin(a));}
+export function tubeGeometry(){
+  const vertices:number[]=[],indices:number[]=[],slices=32,rings=[[FLOOR_Y,PORT_RADIUS],[FLOOR_Y-.13,TUBE_RADIUS],[1.02,TUBE_RADIUS]];
+  for(const [y,r]of rings)for(let i=0;i<=slices;i++){const a=i/slices*Math.PI*2;vertices.push(r*Math.cos(a),y,PORT_Z+r*Math.sin(a));}
   for(let j=0;j<2;j++)for(let i=0;i<slices;i++){const a=j*(slices+1)+i,b=a+slices+1;indices.push(a,b,a+1,a+1,b,b+1);}
   return {vertices:new Float32Array(vertices),indices:new Uint32Array(indices)};
 }
@@ -81,11 +84,17 @@ export class Chamber {
   lockTick=-1;outletOpen=false;
   lastAngle = 0;
   private loadingCap?:RAPIER.Collider;
+  captureHead?:RAPIER.RigidBody;
+  private captureWalls:RAPIER.Collider[]=[];
+  private transferStart=-1;
+  private attemptStart=-1;
+  private pickup={x:0,y:DLT_PORT_Y};
+  private headSeal?:RAPIER.Collider;
   get portZ(){return this.venus?0:PORT_Z;}
   constructor(public world: RAPIER.World, public color: 'red' | 'blue', public offset: number, count: number, rng: () => number, public airflow=false, public tray=TRAY, public motorSpeed=ANGULAR_SPEED,public venus=false) {
     const fixed = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(offset, 0, 0)), shell = shellGeometry(venus);
     world.createCollider(RAPIER.ColliderDesc.trimesh(shell.vertices, shell.indices).setFriction(0.2).setRestitution(0.48), fixed);
-    if(venus) { const cap=shellGeometry(false,true);this.loadingCap=world.createCollider(RAPIER.ColliderDesc.trimesh(cap.vertices,cap.indices).setFriction(.2).setRestitution(.48),fixed);this.loadingCap.setEnabled(false); }
+    if(venus) { const cap=shellGeometry(false,true);this.loadingCap=world.createCollider(RAPIER.ColliderDesc.trimesh(cap.vertices,cap.indices).setCollisionGroups(0x00040001).setFriction(.2).setRestitution(.48),fixed);this.loadingCap.setEnabled(false); }
     // A tiled floor with an actual opening. No invisible attraction or chosen ball.
     const floor = floorGeometry(venus);
     // Solid triangular prisms prevent a driven ball from crossing a zero-thickness floor.
@@ -96,11 +105,26 @@ export class Chamber {
       const prism=RAPIER.ColliderDesc.convexHull(new Float32Array(points));
       if(prism)world.createCollider(prism.setFriction(.08).setRestitution(.4),fixed);
     }
-    this.gate = world.createCollider(RAPIER.ColliderDesc.cylinder(0.018, PORT_RADIUS + 0.02).setTranslation(0, (venus?DLT_PORT_Y:FLOOR_Y) - 0.03, this.portZ), fixed);
-    this.outletGate=world.createCollider(RAPIER.ColliderDesc.cylinder(.018,PORT_RADIUS+.02).setTranslation(0,(venus?DLT_PORT_Y:FLOOR_Y)-.26,this.portZ),fixed);
-    const tube=tubeGeometry(venus);world.createCollider(RAPIER.ColliderDesc.trimesh(tube.vertices,tube.indices).setFriction(.1),fixed);
     if(venus) {
-      const chute=dltChuteGeometry();world.createCollider(RAPIER.ColliderDesc.trimesh(chute.vertices,chute.indices).setFriction(.18).setRestitution(0),fixed);
+      // Single-ball mechanical pocket: only a ball physically inside can be captured.
+      // The carrier moves colliders, never the winning ball or its velocity.
+      world.createCollider(RAPIER.ColliderDesc.cylinder(.025,PORT_RADIUS+.02).setTranslation(0,FLOOR_Y-.025,0),fixed);
+      this.captureHead=world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(offset,DLT_PORT_Y,0));
+      // Isolation circuit: chamber balls remain behind the seal; an actually
+      // captured ball is transferred to the carrier's separate collision layer.
+      // This approximates the unseen moving seal, rather than its exact geometry.
+      this.headSeal=world.createCollider(RAPIER.ColliderDesc.cylinder(.10,.235).setCollisionGroups(0x00040001).setTranslation(0,3.83,0),fixed);
+      this.outletGate=world.createCollider(RAPIER.ColliderDesc.cylinder(.015,.16).setTranslation(0,-.11,0).setRestitution(0),this.captureHead);
+      this.gate=world.createCollider(RAPIER.ColliderDesc.cylinder(.015,.16).setTranslation(0,.205,0).setRestitution(0),this.captureHead);
+      for(let i=0;i<16;i++){
+        const a=i*Math.PI/8;
+        this.captureWalls.push(world.createCollider(RAPIER.ColliderDesc.cuboid(.030,.155,.015).setTranslation(.16*Math.cos(a),.045,.16*Math.sin(a)).setRotation({x:0,y:Math.sin((-a+Math.PI/2)/2),z:0,w:Math.cos((-a+Math.PI/2)/2)}).setRestitution(0).setFriction(.1),this.captureHead));
+      }
+      const chute=dltChuteGeometry();world.createCollider(RAPIER.ColliderDesc.trimesh(chute.vertices,chute.indices).setFriction(.03).setRestitution(0),fixed);
+    } else {
+      this.gate=world.createCollider(RAPIER.ColliderDesc.cylinder(.018,PORT_RADIUS+.02).setTranslation(0,FLOOR_Y-.03,this.portZ),fixed);
+      this.outletGate=world.createCollider(RAPIER.ColliderDesc.cylinder(.018,PORT_RADIUS+.02).setTranslation(0,FLOOR_Y-.26,this.portZ),fixed);
+      const tube=tubeGeometry();world.createCollider(RAPIER.ColliderDesc.trimesh(tube.vertices,tube.indices).setFriction(.1),fixed);
     }
     for (const side of [-1, 1]) {
       world.createCollider(RAPIER.ColliderDesc.cuboid(tray.halfLength+.025, tray.wallHalfHeight, .025).setTranslation(tray.centerX, tray.wallY, this.portZ + side * (tray.halfWidth+.025)).setRestitution(0), fixed);
@@ -132,15 +156,45 @@ export class Chamber {
       const layer = Math.floor(slots[i] / 12), cell = slots[i] % 12, x = (cell % 4 - 1.5) * 0.22 + (rng() - 0.5) * 0.02, z = (Math.floor(cell / 4) - 1) * 0.22 + (rng() - 0.5) * 0.02;
       const loading=venus?dltLoadingPosition(slots[i],count):{x,y:2.63+layer*.2,z};
       const body = world.createRigidBody((venus?RAPIER.RigidBodyDesc.kinematicPositionBased():RAPIER.RigidBodyDesc.dynamic()).setTranslation(offset + loading.x, loading.y, loading.z).setCcdEnabled(true).setLinearDamping(0.12).setAngularDamping(0.15).setCanSleep(false));
-      world.createCollider(RAPIER.ColliderDesc.ball(BALL_RADIUS).setMass(airflow?.005:.025).setFriction(airflow?.14:.24).setRestitution(airflow?.62:.66), body);
+      const ballCollider=RAPIER.ColliderDesc.ball(BALL_RADIUS).setMass(airflow?.005:.025).setFriction(airflow?.14:.24).setRestitution(airflow?.62:.66);
+      if(venus)ballCollider.setCollisionGroups(0x0001ffff);
+      world.createCollider(ballCollider,body);
       this.balls.push({ body, number: i + 1, selected: false });
     }
   }
   releaseLoadingBalls() {
     if(this.venus)for(const ball of this.balls)ball.body.setBodyType(RAPIER.RigidBodyType.Dynamic,true);
   }
-  setGate(open: boolean) { this.open = open; this.gate.setEnabled(!open); }
-  advanceLock(tick:number){if(this.lockTick>=0&&tick>=this.lockTick+12){this.outletOpen=true;this.outletGate.setEnabled(false);}}
+  setGate(open: boolean) {
+    if(this.venus&&open&&!this.open)this.attemptStart=-1;
+    this.open = open; this.gate.setEnabled(!open);
+    if(this.venus&&open){this.gate.setCollisionGroups(0x0008ffff);this.outletGate.setCollisionGroups(0x0008ffff);this.outletGate.setEnabled(true);this.outletOpen=false;this.captureWalls.forEach((c,i)=>{const a=i*Math.PI/8;c.setCollisionGroups(0x0008ffff);c.setTranslationWrtParent({x:.16*Math.cos(a),y:.045,z:.16*Math.sin(a)});c.setEnabled(Math.cos(a)>-.35);});}
+  }
+  advanceLock(tick:number){
+    if(this.venus&&this.captureHead){
+      if(this.transferStart<0){
+        if(this.open){
+          if(this.attemptStart<0)this.attemptStart=tick;
+          const elapsed=(tick-this.attemptStart)*DT,deploy=Math.min(1,elapsed);
+          this.captureHead.setNextKinematicTranslation({x:this.offset+(.55+.20*Math.sin(elapsed*.8))*deploy,y:DLT_PORT_Y-(.43+.18*Math.sin(elapsed*.6))*deploy,z:0});
+        }
+        return;
+      }
+      const elapsed=tick-this.transferStart,smooth=(t:number)=>{t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);};
+      // Pause for presentation, lift through the top opening, then transfer left.
+      const center=smooth((elapsed-120)/60),lift=smooth((elapsed-180)/120),side=smooth((elapsed-300)/120);
+      const radius=.16-.033*smooth(elapsed/90);
+      this.captureWalls.forEach((c,i)=>{const a=i*Math.PI/8;c.setTranslationWrtParent({x:radius*Math.cos(a),y:.045,z:radius*Math.sin(a)});});
+      this.captureHead.setNextKinematicTranslation({x:this.offset+this.pickup.x*(1-center)-.42*side,y:this.pickup.y+(3.92-this.pickup.y)*lift,z:0});
+      if(elapsed>=450){this.outletOpen=true;this.outletGate.setEnabled(false);this.gate.setEnabled(false);this.captureWalls.forEach(c=>c.setEnabled(false));}
+      if(elapsed>=540){
+        this.captureHead.setNextKinematicTranslation({x:this.offset,y:DLT_PORT_Y,z:0});
+        this.transferStart=-1;this.lockTick=-1;
+      }
+      return;
+    }
+    if(this.lockTick>=0&&tick>=this.lockTick+12){this.outletOpen=true;this.outletGate.setEnabled(false);}
+  }
   private blowerStart: number | undefined;
   drive(tick: number, moving: boolean, phase: number) {
     if(this.airflow) {
@@ -152,17 +206,10 @@ export class Chamber {
         const body=ball.body;body.resetForces(true);
         if(!moving||ball.selected) continue;
         const p=body.translation();
+        if(this.venus&&this.open&&this.captureHead){const head=this.captureHead.translation();if(Math.hypot(p.x-head.x,p.z)<.07&&p.y>head.y-.02&&p.y<head.y+.13)continue;}
         // Once a ball is in the isolated outlet it falls under gravity, without jet force.
-        if(p.y<FLOOR_Y || this.venus&&p.y<DLT_PORT_Y&&Math.hypot(p.x-this.offset,p.z)<TUBE_RADIUS) continue;
+        if(p.y<FLOOR_Y) continue;
         const wind=airVelocity(p.x-this.offset,p.y-CENTER_Y,p.z,tick*DT,phase),v=body.linvel();
-        if(this.venus&&this.open) {
-          const turn=Math.max(0,Math.min(1,(p.y-CENTER_Y-.40)/.35)),smooth=turn*turn*(3-2*turn),x=p.x-this.offset;
-          // A continuous upper return flow converges toward the capture head.
-          // This field is shared by all balls and does not select a number.
-          wind.x-=12*smooth*x;wind.z-=12*smooth*p.z;
-          // Opening the air valve produces a local return into the upper head.
-          wind.y-=10*smooth*Math.exp(-(x*x+p.z*p.z)/.025);
-        }
         const dx=wind.x*gain-v.x,dy=wind.y*gain-v.y,dz=wind.z*gain-v.z;
         const drag=.5*1.225*.47*Math.PI*BALL_RADIUS**2*Math.hypot(dx,dy,dz);
         body.addForce({x:drag*dx,y:drag*dy,z:drag*dz},true);
@@ -177,6 +224,23 @@ export class Chamber {
     });
   }
   readCrossings(tick: number) {
+    if(this.venus){
+      if(!this.open||this.transferStart>=0)return;
+      for(const ball of this.balls){
+        const p=ball.body.translation(),head=this.captureHead!.translation();
+        if(!ball.selected&&Math.hypot(p.x-head.x,p.z)<.058&&p.y>head.y-.02&&p.y<head.y+.10){
+          if(this.balls.some(other=>{if(other===ball||other.selected)return false;const q=other.body.translation();return Math.hypot(q.x-head.x,q.z)<.18&&q.y>head.y-.02&&q.y<head.y+.32;}))continue;
+          ball.selected=true;this.events.push({color:this.color,number:ball.number,tick});
+          this.pickup={x:head.x-this.offset,y:head.y};
+          ball.body.collider(0).setCollisionGroups(0x0002fffe);
+          this.gate.setCollisionGroups(0x00080002);this.outletGate.setCollisionGroups(0x00080002);
+          this.captureWalls.forEach(c=>{c.setCollisionGroups(0x00080002);c.setEnabled(true);});
+          this.setGate(false);this.lockTick=tick;this.transferStart=tick;this.nextOpen=tick+840;
+          break;
+        }
+      }
+      return;
+    }
     for (const ball of this.balls) {
       const p = ball.body.translation();
       const inTube=this.venus?Math.hypot(p.x-this.offset,p.z)<TUBE_RADIUS-BALL_RADIUS+.006:Math.abs(p.x-this.offset)<PORT_RADIUS&&Math.abs(p.z-this.portZ)<PORT_RADIUS;
@@ -201,7 +265,7 @@ export class DrawSimulation {
     this.tick++; const [red, blue] = this.chambers;
     const [redTarget,blueTarget]=GAMES[this.game].draws;
     if (this.tick === 240) { this.phase = 'mixing';red.releaseLoadingBalls(); }
-    if (this.blueStart&&this.tick===this.blueStart)blue.releaseLoadingBalls();
+    if (this.blueStart&&this.tick===this.blueStart){blue.releaseLoadingBalls();if(this.game==='dlt')this.phase='blue';}
     if (this.tick === (this.game==='dlt'?240+18*120:960)) { this.phase = 'red'; red.nextOpen = this.tick; }
     const redMoving = this.tick >= 240 && red.events.length < redTarget, blueMoving = this.blueStart > 0 && this.tick >= this.blueStart && (this.game==='ssq'||blue.events.length<blueTarget);
     red.drive(this.tick, redMoving, this.seedPhase); blue.drive(blueMoving ? this.tick - this.blueStart : 0, blueMoving, this.seedPhase + 1);
@@ -209,12 +273,17 @@ export class DrawSimulation {
     if (this.phase === 'blue' && blue.events.length < blueTarget && this.tick >= blue.nextOpen&&blue.lockTick<0) blue.setGate(true);
     red.advanceLock(this.tick);blue.advanceLock(this.tick);
     this.world.step(); red.readCrossings(this.tick); blue.readCrossings(this.tick);
-    if (red.events.length === redTarget && !this.blueStart) { this.blueStart = this.tick + 180; blue.nextOpen = this.blueStart + (this.game==='dlt'?18*120:720); this.phase = 'blue'; }
+    if (red.events.length === redTarget && !this.blueStart) { this.blueStart = this.tick + (this.game==='dlt'?840:180); blue.nextOpen = this.blueStart + (this.game==='dlt'?18*120:720); if(this.game==='ssq')this.phase = 'blue'; }
     if (red.events.length > redTarget || blue.events.length > blueTarget) this.fail('出球机构出现连续出球，本场无效，请重新开始。');
-    if (blue.events.length === blueTarget && this.tick >= blue.events[blueTarget-1].tick + (this.game==='dlt'?360:180)) this.phase = 'complete';
-    if (this.tick > 120 * 180) this.fail('出球等待超时，本场未完成，请重新开始。');
+    const delivered=this.game!=='dlt'||this.chambers.every(c=>c.balls.filter(b=>b.selected).every(b=>{
+      const p=b.body.translation(),v=b.body.linvel(),rest=c.tray.y+(p.x-c.offset-c.tray.centerX)*Math.tan(c.tray.slope)+(.025+BALL_RADIUS)/Math.cos(c.tray.slope);
+      return Math.abs(p.y-rest)<.018&&Math.hypot(v.x,v.y,v.z)<.15;
+    }));
+    if (blue.events.length === blueTarget && this.tick >= blue.events[blueTarget-1].tick + (this.game==='dlt'?840:180)&&delivered) this.phase = 'complete';
+    if (this.tick > 120 * (this.game==='dlt'?300:180)) this.fail('出球等待超时，本场未完成，请重新开始。');
     for (const chamber of this.chambers) for (const ball of chamber.balls) {
       const p = ball.body.translation();
+      if(this.game==='dlt'&&ball.selected&&(p.y<.2||Math.abs(p.x-chamber.offset)>1.7||Math.abs(p.z)>.4))this.fail('号码球离开导球通道，本场无效。');
       if (!Number.isFinite(p.y) || (!ball.selected && (p.y < 1.5 || p.y > (this.game==='dlt'&&(chamber===red?this.tick<420:!this.blueStart||this.tick<this.blueStart+180)?4.7:4) || Math.abs(p.x - chamber.offset) > 1.3 || Math.abs(p.z) > 1.3))) this.fail('检测到球体离开有效机器边界，本场无效。');
     }
   }
@@ -222,7 +291,7 @@ export class DrawSimulation {
   snapshot(): Snapshot {
     const balls: number[] = [];
     for (const chamber of this.chambers) for (const ball of chamber.balls) { const p = ball.body.translation(), q = ball.body.rotation(); balls.push(p.x, p.y, p.z, q.x, q.y, q.z, q.w, ball.selected ? 1 : 0); }
-    return { tick: this.tick, phase: this.phase, balls, gate: this.chambers.map(c => c.open) as [boolean, boolean],outlet:this.chambers.map(c=>c.outletOpen) as [boolean,boolean], events: this.chambers.flatMap(c => c.events), seed: this.seed, error: this.error };
+    return { tick: this.tick, phase: this.phase, balls, gate: this.chambers.map(c => c.open) as [boolean, boolean],outlet:this.chambers.map(c=>c.outletOpen) as [boolean,boolean], events: this.chambers.flatMap(c => c.events), seed: this.seed, error: this.error,...(this.game==='dlt'?{captureHeads:this.chambers.map(c=>{const p=c.captureHead!.translation();return [p.x,p.y,p.z,c.lockTick>=0?1:0];})}:{}) };
   }
   free() { this.world.free(); }
 }

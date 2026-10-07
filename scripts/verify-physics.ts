@@ -16,17 +16,23 @@ for (let i = offset; i < count; i++) {
   const sim = new DrawSimulation(seed,game); sim.start();
   if(game==='dlt')assert(sim.snapshot().balls.filter((_,j)=>j%8===1).every(y=>y>=3.57),'Both complete ball sets must wait in the peripheral loading rack');
   let rearReleased=false;
+  const outerRoute=new Set<string>();
   while (!['complete', 'failed'].includes(sim.phase)) {
     sim.step();
     if(game==='dlt') {
       assert(sim.chambers[0].events.every(e=>e.tick>=2400),'Do not capture while loading or ramping the blower');
       if(!sim.blueStart||sim.tick<sim.blueStart)assert(sim.chambers[1].balls.every(b=>b.body.translation().y>=3.57),'Rear balls must wait until the front draw finishes');
       else rearReleased=true;
+      for(const chamber of sim.chambers)for(const ball of chamber.balls){
+        const p=ball.body.translation();
+        if(ball.selected&&p.x-chamber.offset<-.95&&p.y>2&&p.y<3.4)outerRoute.add(`${chamber.color}:${ball.number}`);
+      }
     }
   }
   if(game==='dlt')assert(rearReleased,'Rear machine must release its own loading rack');
   const s = sim.snapshot(); results.push({ seed: sim.seed, phase: s.phase, seconds: Number((s.tick / 120).toFixed(2)), events: s.events, error: s.error }); sim.free();
   assert.equal(s.phase, 'complete', JSON.stringify(results.at(-1)));
+  if(game==='dlt')assert(s.events.every(e=>outerRoute.has(`${e.color}:${e.number}`)),'Every drawn ball must physically traverse the exterior left route');
   firstSnapshot??=s;
   const red = s.events.filter(e => e.color === 'red'), blue = s.events.filter(e => e.color === 'blue');
   assert.equal(red.length, config.draws[0]); assert.equal(new Set(red.map(e => e.number)).size, config.draws[0]); assert.equal(blue.length, config.draws[1]);assert.equal(new Set(blue.map(e=>e.number)).size,config.draws[1]);

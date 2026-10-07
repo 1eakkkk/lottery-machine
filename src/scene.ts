@@ -8,6 +8,7 @@ export class MachineScene {
   renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); camera: THREE.PerspectiveCamera; controls: OrbitControls;
   balls: THREE.Mesh[] = []; rotors: THREE.Group[][] = []; gates: THREE.Mesh[] = [];
   outletGates:THREE.Mesh[]=[];
+  captureHeads:THREE.Group[]=[];
   private currentView = 'all';
   private resultRack = new THREE.Group();
   private resultMoves: { ball: THREE.Mesh; from: THREE.Vector3; rotation: THREE.Quaternion; to: THREE.Vector3; start: number }[] = [];
@@ -184,14 +185,20 @@ export class MachineScene {
         this.mesh(new THREE.BoxGeometry(.16,.006,.016),steel,x+.15*Math.cos(angle),2.063,.15*Math.sin(angle)).rotation.y=-angle;
       }
     }
-    const tube=tubeGeometry(venus),tubeMesh=new THREE.BufferGeometry();tubeMesh.setAttribute('position',new THREE.BufferAttribute(tube.vertices,3));tubeMesh.setIndex(new THREE.BufferAttribute(tube.indices,1));tubeMesh.computeVertexNormals();this.mesh(tubeMesh,glass.clone(),x,0,0);
+    if(!venus){
+    const tube=tubeGeometry(),tubeMesh=new THREE.BufferGeometry();tubeMesh.setAttribute('position',new THREE.BufferAttribute(tube.vertices,3));tubeMesh.setIndex(new THREE.BufferAttribute(tube.indices,1));tubeMesh.computeVertexNormals();this.mesh(tubeMesh,glass.clone(),x,0,0);
     for (const y of [venus?1.90:1.02, venus?DLT_PORT_Y:1.8]) this.ring(TUBE_RADIUS + 0.01, x, y, portZ, bronze);
+    }
     if(venus) {
       const guide=dltChuteGeometry(),geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(guide.vertices,3));geometry.setIndex(new THREE.BufferAttribute(guide.indices,1));geometry.computeVertexNormals();
-      const guideGlass=glass.clone();guideGlass.opacity=.25;this.mesh(geometry,guideGlass,x,0,0);
+      const guideGlass=glass.clone();guideGlass.opacity=.38;this.mesh(geometry,guideGlass,x,0,0);
     }
-    this.gates.push(this.mesh(new THREE.CylinderGeometry(PORT_RADIUS + 0.02, PORT_RADIUS + 0.02, 0.036, 32), dark, x, (venus?DLT_PORT_Y:FLOOR_Y) - 0.03, portZ));
-    this.outletGates.push(this.mesh(new THREE.CylinderGeometry(PORT_RADIUS+.02,PORT_RADIUS+.02,.036,32),dark,x,(venus?DLT_PORT_Y:FLOOR_Y)-.26,portZ));
+    const capture=new THREE.Group();capture.position.set(x,DLT_PORT_Y,0);if(venus){this.scene.add(capture);this.captureHeads.push(capture);
+      this.mesh(new THREE.CylinderGeometry(.174,.174,.31,32,1,true),glass.clone(),0,.045,0,capture);
+      this.mesh(new THREE.BoxGeometry(.045,.36,.035),bronze,.16,.05,0,capture);
+    }
+    this.gates.push(this.mesh(new THREE.CylinderGeometry(PORT_RADIUS + 0.02, PORT_RADIUS + 0.02, 0.036, 32), dark, venus?0:x, venus?.205:FLOOR_Y-.03, portZ,venus?capture:undefined));
+    this.outletGates.push(this.mesh(new THREE.CylinderGeometry(PORT_RADIUS+.02,PORT_RADIUS+.02,.036,32),dark,venus?0:x,venus?-.11:FLOOR_Y-.26,portZ,venus?capture:undefined));
     this.mesh(new THREE.BoxGeometry(tray.halfLength*2, .05, tray.halfWidth*2), steel, x+tray.centerX, tray.y, portZ).rotation.z=tray.slope;
     const railGlass=glass.clone();railGlass.opacity=.23;
     if(tray.halfLength>2||venus) {
@@ -214,7 +221,7 @@ export class MachineScene {
     for (let i = 0; i < count; i++) {
       const ball = this.mesh(ballGeometry, ballMaterial, x, 2.8, 0);
       const labelCanvas=document.createElement('canvas');labelCanvas.width=128;labelCanvas.height=128;
-      const ctx=labelCanvas.getContext('2d')!;ctx.fillStyle=venus?'#f1d431':'#fff9ed';ctx.beginPath();ctx.arc(64,64,58,0,Math.PI*2);ctx.fill();ctx.fillStyle='#080808';ctx.font='600 62px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
+      const ctx=labelCanvas.getContext('2d')!;ctx.fillStyle=venus?'#111514':'#fff9ed';ctx.beginPath();if(venus)ctx.roundRect(19,19,90,90,17);else ctx.arc(64,64,58,0,Math.PI*2);ctx.fill();ctx.fillStyle=venus?'#f5dc34':'#080808';ctx.font=venus?'700 59px Arial':'600 62px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
       const number=venus?String(i+1).padStart(2,'0'):String(this.game==='fc3d'?i:i+1);
       ctx.fillText(number,64,(number==='6'||number==='9'||venus&&(number==='06'||number==='09'))?61:67);
       // The orientation mark is printed on the same curved surface as the digit.
@@ -253,6 +260,7 @@ export class MachineScene {
       const tilt=0,st=Math.sin(tilt/2),ct=Math.cos(tilt/2),sa=Math.sin(a/2),ca=Math.cos(a/2);
       rotor.quaternion.set(-st*sa,ct*sa,st*ca,ct*ca);
     }));
+    this.captureHeads.forEach((head,i)=>{const p=s.captureHeads?.[i];if(p)head.position.set(p[0],p[1],p[2]);});
     this.gates.forEach((gate, i) => { gate.visible = !s.gate[i]; });
     this.outletGates.forEach((gate,i)=>{gate.visible=!s.outlet[i];});
     if(s.phase==='complete'&&!this.resultShown) {
@@ -281,12 +289,12 @@ export class MachineScene {
     else if(name==='tray'){const tray=receivingTray(this.game),x=GAMES[this.game].offsets[0]+tray.centerX,z=this.game==='dlt'?0:PORT_Z;this.camera.position.set(x,tray.y+.9,z+Math.max(3,(tray.halfLength*2+.4)/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));this.controls.target.set(x,tray.y+.15,z);}
     else if(['red','blue','third'].includes(name)) {
       const x=GAMES[this.game].offsets[['red','blue','third'].indexOf(name)]??0;
-      this.camera.position.set(x,3.5,Math.max(this.game==='dlt'?5.4:4.4,2.4/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));
-      this.controls.target.set(x,this.game==='dlt'?2.75:2.5,0);
+      this.camera.position.set(x-(this.game==='dlt'?.15:0),3.5,Math.max(this.game==='dlt'?5.4:4.4,(this.game==='dlt'?3.1:2.4)/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));
+      this.controls.target.set(x-(this.game==='dlt'?.15:0),this.game==='dlt'?2.75:2.5,0);
     }
     else {
-      const distance = Math.max(this.game==='dlt'?9.3:7.2, (this.game==='fc3d'?8.8:this.game==='kl8'?6: GAMES[this.game].counts.length===1?3.8:5.8) / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * this.camera.aspect));
-      const center=this.game==='kl8'?-1.35:0;
+      const distance = Math.max(this.game==='dlt'?9.3:7.2, (this.game==='fc3d'?8.8:this.game==='kl8'?6:this.game==='dlt'?6.4:GAMES[this.game].counts.length===1?3.8:5.8) / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * this.camera.aspect));
+      const center=this.game==='kl8'?-1.35:this.game==='dlt'?-.15:0;
       this.camera.position.set(center, 1.85 + distance * .25, distance); this.controls.target.set(center, 1.85, 0);
     }
   }
