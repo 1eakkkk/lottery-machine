@@ -1,17 +1,11 @@
 import { createAuth, type Env } from './auth';
 import { validateDraw } from './records';
-import { scratchApi } from './scratch';
 const json = (body: unknown, status=200) => Response.json(body, { status, headers: {
   'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff', 'Referrer-Policy':'no-referrer' } });
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname.startsWith('/dev/scratch')) return new Response('Not found',{status:404});
-    if (/^\/(ticket|verify)\//.test(url.pathname)) {
-      const target=new URL('/scratch/',url);return env.ASSETS.fetch(new Request(target,request));
-    }
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
-    if (url.pathname.startsWith('/api/scratch/')) return scratchApi(request,env);
     if (url.pathname === '/api/status') return json({ accountsReady: Boolean(env.BETTER_AUTH_SECRET && env.RESEND_API_KEY) });
     if (!env.BETTER_AUTH_SECRET) return json({ message:'账户服务暂未启用，仍可直接开奖。' },503);
     const auth = createAuth(env);

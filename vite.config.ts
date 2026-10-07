@@ -9,9 +9,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
-        scratch: fileURLToPath(
-          new URL("./scratch/index.html", import.meta.url),
-        ),
       },
     },
   },

@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS scratch_point_events;
+DROP TABLE IF EXISTS scratch_wallets;
+DROP TABLE IF EXISTS scratch_ledger;
+DROP TABLE IF EXISTS scratch_reservations;
+DROP TABLE IF EXISTS scratch_tickets;
+DROP TABLE IF EXISTS scratch_orders;
+DROP TABLE IF EXISTS scratch_books;
+DROP TABLE IF EXISTS scratch_issues;
+DROP TABLE IF EXISTS scratch_limits;
+DROP TABLE IF EXISTS scratch_actors;
