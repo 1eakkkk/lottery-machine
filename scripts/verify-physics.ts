@@ -4,6 +4,7 @@ import { DrawSimulation, initializePhysics, randomGenerator, TRAY, PORT_Z, BALL_
 import { venusCycleGain,venusAirVelocity } from '../src/airflow.ts';
 import { receivingTray } from '../src/games.ts';
 import { GAMES } from '../src/games.ts';
+import { VENUS_WHEEL } from '../src/venus-wheel.ts';
 await initializePhysics();
 const game=process.argv[2]==='dlt'?'dlt':'ssq',config=GAMES[game];
 const tray=receivingTray(game),portZ=game==='dlt'?0:PORT_Z;
@@ -47,6 +48,7 @@ for (let i = offset; i < count; i++) {
     assert.deepEqual(wheel.released,chamber.events.map(e=>e.number),'Quarter-turn drainage preserves capture order');
     assert.equal(wheel.quarter,wheel.quota+1,'Continue one extra turn after the last captured ball leaves the top');
     assert(wheel.pockets.every(p=>!p.ball),'No ball remains in any pocket');
+    for(let j=1;j<chamber.events.length;j++)assert(chamber.events[j].tick-chamber.events[j-1].tick>=VENUS_WHEEL.turnTicks+2*VENUS_WHEEL.pauseTicks,'Each number must have a separate mechanical capture/transport interval');
   }
   const s = sim.snapshot(); results.push({ seed: sim.seed, phase: s.phase, seconds: Number((s.tick / 120).toFixed(2)), events: s.events, error: s.error }); sim.free();
   assert.equal(s.phase, 'complete', JSON.stringify(results.at(-1)));

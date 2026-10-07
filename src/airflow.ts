@@ -29,14 +29,14 @@ export function venusAirVelocity(x:number,y:number,z:number,seconds:number,phase
   const jet=Math.exp(-(x*x+z*z)/width);
   // Deflect the upper plume outward rather than funneling the whole cloud
   // toward the intake. Only the narrow axial core can reach the throat.
-  const circulation=3.2*(y+.15)*(1-blend)+6*blend,swirl=1.2*(1-blend);
+  const circulation=4.2*(y+.15)*(1-blend)+8*blend,swirl=1.2*(1-blend);
   const throat=Math.max(0,Math.min(1,(y-.80)/.10));
   // A closed intake cannot sustain a through-flow in its narrow feed tube.
   // Approximate diversion below it so bodies drain rather than queue there.
-  const up=(14-throat)*(intakeOpen?1:1-.9*blend);
+  const up=(18-throat)*(intakeOpen?1:1-.9*blend);
   const gust=1.2*(1-blend)+.25*blend;
   return {x:circulation*x-swirl*z+gust*Math.sin(z*7+seconds*3.7+phase),
-    y:up*jet-5*(1-jet)+.45*Math.sin(x*6-z*5+seconds*4.1+phase),
+    y:up*jet-7*(1-jet)+.45*Math.sin(x*6-z*5+seconds*4.1+phase),
     z:circulation*z+swirl*x+gust*Math.sin(x*8-seconds*3.3+phase)};
 }
 

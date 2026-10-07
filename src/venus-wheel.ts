@@ -1,6 +1,6 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 
-export const VENUS_WHEEL={centerY:2.75,radius:1.20,topY:3.95,z:0,turnTicks:108,pauseTicks:36};
+export const VENUS_WHEEL={centerY:2.75,radius:1.20,topY:3.95,z:0,turnTicks:240,pauseTicks:180};
 type Ball={body:RAPIER.RigidBody;number:number;selected:boolean};
 type Event={color:'red'|'blue';number:number;tick:number};
 type Pocket={body:RAPIER.RigidBody;walls:RAPIER.Collider[];floor:RAPIER.Collider;ball?:Ball};
