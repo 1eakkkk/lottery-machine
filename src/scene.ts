@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { numberedBallSurface } from './ball-label';
+import { printedBallTexture } from './ball-print';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VENUS_WHEEL } from './venus-wheel';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -241,8 +242,8 @@ export class MachineScene {
       this.mesh(new THREE.PlaneGeometry(.88,.22),new THREE.MeshBasicMaterial({map:this.textTexture('一刻开奖','#ffffff','#234771')}),x,1.02,.34);
       this.mesh(new THREE.PlaneGeometry(.70,.18),new THREE.MeshBasicMaterial({map:this.textTexture(name,'#dce7f1','#234771')}),x,.82,.34);
     }
-    const ballGeometry = new THREE.SphereGeometry(BALL_RADIUS, 32, 24);
-    const labelGeometry = numberedBallSurface(BALL_RADIUS + .0012);
+    const ballGeometry = new THREE.SphereGeometry(BALL_RADIUS, venus?64:32, venus?48:24);
+    const labelGeometry = venus?undefined:numberedBallSurface(BALL_RADIUS + .0012);
     const grain = new Uint8Array(64 * 64);
     for (let i = 0; i < grain.length; i++) grain[i] = 110 + Math.floor(Math.random() * 36);
     const rubberTexture = new THREE.DataTexture(grain, 64, 64, THREE.RedFormat); rubberTexture.needsUpdate = true;
@@ -258,10 +259,14 @@ export class MachineScene {
       ctx.fillText(number,64,(number==='6'||number==='9'||venus&&(number==='06'||number==='09'))?61:67);
       // The orientation mark is printed on the same curved surface as the digit.
       if((number==='6'||number==='9'||venus&&(number==='06'||number==='09')))ctx.fillRect(46,91,36,5);
-      const numberTexture=new THREE.CanvasTexture(labelCanvas);numberTexture.colorSpace=THREE.SRGBColorSpace;
-      const labelMaterial = new THREE.MeshStandardMaterial({ map: numberTexture, transparent: true, alphaTest: .5, roughness: .9, metalness: 0 });
-      // Repeated curved prints rotate and become occluded with the physical ball.
-      ball.add(new THREE.Mesh(labelGeometry, labelMaterial));
+      if(venus){
+        material.map=printedBallTexture(labelCanvas,dltBallColor(i+1,name.startsWith('后区')));
+        material.color.set('#ffffff');
+      } else {
+        const numberTexture=new THREE.CanvasTexture(labelCanvas);numberTexture.colorSpace=THREE.SRGBColorSpace;
+        const labelMaterial = new THREE.MeshStandardMaterial({ map: numberTexture, transparent: true, alphaTest: .5, roughness: .9, metalness: 0 });
+        ball.add(new THREE.Mesh(labelGeometry!, labelMaterial));
+      }
       this.balls.push(ball);
     }
   }

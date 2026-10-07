@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import { DrawSimulation, initializePhysics, randomGenerator, TRAY, PORT_Z, BALL_RADIUS, blowerGain } from '../src/physics.ts';
+import { venusCycleGain } from '../src/airflow.ts';
 import { receivingTray } from '../src/games.ts';
 import { GAMES } from '../src/games.ts';
 await initializePhysics();
@@ -8,7 +9,7 @@ const game=process.argv[2]==='dlt'?'dlt':'ssq',config=GAMES[game];
 const tray=receivingTray(game),portZ=game==='dlt'?0:PORT_Z;
 const count = Number(process.env.DRAW_TEST_COUNT || 12);
 const offset=Number(process.env.DRAW_TEST_OFFSET||0);
-if(game==='dlt'){assert.equal(blowerGain(0,true),0);assert(blowerGain(3,true)<blowerGain(6,true));assert(blowerGain(6,true)<blowerGain(10,true));assert.equal(blowerGain(10,true),1);}
+if(game==='dlt'){for(let t=0;t<6;t+=.05)assert(venusCycleGain(t)>0&&venusCycleGain(t)<=1,'The blower never stops during a strong/weak cycle');assert(venusCycleGain(1)>venusCycleGain(2.5));assert.equal(blowerGain(0,true),0);assert(blowerGain(3,true)<blowerGain(6,true));assert(blowerGain(6,true)<blowerGain(10,true));assert.equal(blowerGain(10,true),1);}
 let totalTicks = 0; const results = [];let firstSnapshot;
 for (let i = offset; i < count; i++) {
   const special=[0,1,4294967295,42];
@@ -48,7 +49,7 @@ for (let i = offset; i < count; i++) {
   }
   const s = sim.snapshot(); results.push({ seed: sim.seed, phase: s.phase, seconds: Number((s.tick / 120).toFixed(2)), events: s.events, error: s.error }); sim.free();
   assert.equal(s.phase, 'complete', JSON.stringify(results.at(-1)));
-  if(game==='dlt'){assert(Math.min(...mixingHeights)<2.6,'Off cycles must let the ball cloud fall away from the roof');assert(Math.max(...mixingHeights)>2.95,'On cycles must lift the cloud into the upper chamber');}
+  if(game==='dlt'){assert(Math.min(...mixingHeights)<2.6,'Weak cycles must let the ball cloud fall away from the roof');assert(Math.max(...mixingHeights)>2.95,'On cycles must lift the cloud into the upper chamber');}
   if(game==='dlt')assert(rearReleased,'Rear machine must release its own loading rack');
   if(game==='dlt')assert(s.events.every(e=>outerRoute.has(`${e.color}:${e.number}`)),'Every drawn ball must physically traverse the exterior left route');
   firstSnapshot??=s;

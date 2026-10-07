@@ -1,6 +1,6 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { GAMES } from './games';
-import { airVelocity,venusAirVelocity,venusPulseGain } from './airflow';
+import { airVelocity,venusAirVelocity,venusCycleGain } from './airflow';
 import { VenusWheel } from './venus-wheel';
 export const MODEL_VERSION = 'ssq-mechanical-v2';
 export const DT = 1 / 120, BALL_RADIUS = 0.082, CHAMBER_RADIUS = 1.08, CENTER_Y = 2.7, FLOOR_Y = 1.94;
@@ -170,7 +170,7 @@ export class Chamber {
       else this.blowerStart ??= tick;
       if(this.loadingCap&&moving&&tick-this.blowerStart!>=180)this.loadingCap.setEnabled(true);
       const elapsed=(tick-this.blowerStart!)*DT;
-      const gain = moving?blowerGain(elapsed,this.venus)*(this.venus?venusPulseGain(elapsed):1):0;
+      const gain = moving?blowerGain(elapsed,this.venus)*(this.venus?venusCycleGain(elapsed):1):0;
       for(const ball of this.balls) {
         const body=ball.body;body.resetForces(true);
         if(!moving||ball.selected) continue;

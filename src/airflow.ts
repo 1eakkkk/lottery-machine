@@ -35,9 +35,9 @@ export function venusAirVelocity(x:number,y:number,z:number,seconds:number,phase
     z:circulation*z+swirl*x+gust*Math.sin(x*8-seconds*3.3+phase)};
 }
 
-/** Experimental pulsed blower: 1.8 s powered, 1.2 s fully off, with 0.2 s
- * smooth edges. Global timing only; no dependence on ball identities or results. */
-export function venusPulseGain(seconds:number){
+/** Continuous blower with alternating strong/weak output. The weak phase
+ * retains 18% air speed; smooth edges avoid an abrupt change in force. */
+export function venusCycleGain(seconds:number){
   const t=((seconds%3)+3)%3,smooth=(v:number)=>{v=Math.max(0,Math.min(1,v));return v*v*(3-2*v);};
-  return smooth(t/.2)*smooth((1.8-t)/.2);
+  return .18+.82*smooth(t/.2)*smooth((1.8-t)/.2);
 }
