@@ -1,17 +1,30 @@
 import assert from 'node:assert/strict';
 import {mkdirSync,writeFileSync} from 'node:fs';
-import { DrawSimulation, initializePhysics, randomGenerator, TRAY, PORT_Z, BALL_RADIUS } from '../src/physics.ts';
+import { DrawSimulation, initializePhysics, randomGenerator, TRAY, PORT_Z, BALL_RADIUS, blowerGain } from '../src/physics.ts';
+import { receivingTray } from '../src/games.ts';
 import { GAMES } from '../src/games.ts';
 await initializePhysics();
 const game=process.argv[2]==='dlt'?'dlt':'ssq',config=GAMES[game];
+const tray=receivingTray(game),portZ=game==='dlt'?0:PORT_Z;
 const count = Number(process.env.DRAW_TEST_COUNT || 12);
 const offset=Number(process.env.DRAW_TEST_OFFSET||0);
+if(game==='dlt'){assert.equal(blowerGain(0,true),0);assert(blowerGain(3,true)<blowerGain(6,true));assert(blowerGain(6,true)<blowerGain(10,true));assert.equal(blowerGain(10,true),1);}
 let totalTicks = 0; const results = [];let firstSnapshot;
 for (let i = offset; i < count; i++) {
   const special=[0,1,4294967295,42];
   const seed=i<12?14021+i*193:i<16?special[i-12]:Math.floor(randomGenerator(723145+i)()*4294967296);
   const sim = new DrawSimulation(seed,game); sim.start();
-  while (!['complete', 'failed'].includes(sim.phase)) sim.step();
+  if(game==='dlt')assert(sim.snapshot().balls.filter((_,j)=>j%8===1).every(y=>y>=3.57),'Both complete ball sets must wait in the peripheral loading rack');
+  let rearReleased=false;
+  while (!['complete', 'failed'].includes(sim.phase)) {
+    sim.step();
+    if(game==='dlt') {
+      assert(sim.chambers[0].events.every(e=>e.tick>=2400),'Do not capture while loading or ramping the blower');
+      if(!sim.blueStart||sim.tick<sim.blueStart)assert(sim.chambers[1].balls.every(b=>b.body.translation().y>=3.57),'Rear balls must wait until the front draw finishes');
+      else rearReleased=true;
+    }
+  }
+  if(game==='dlt')assert(rearReleased,'Rear machine must release its own loading rack');
   const s = sim.snapshot(); results.push({ seed: sim.seed, phase: s.phase, seconds: Number((s.tick / 120).toFixed(2)), events: s.events, error: s.error }); sim.free();
   assert.equal(s.phase, 'complete', JSON.stringify(results.at(-1)));
   firstSnapshot??=s;
@@ -23,9 +36,10 @@ for (let i = offset; i < count; i++) {
     const offset=event.color==='red'?-1.45:1.45;
     const j=((event.color==='red'?0:config.counts[0])+event.number-1)*8;
     const [x,y,z]=s.balls.slice(j,j+3);
-    assert(Math.abs(z-PORT_Z)<TRAY.halfWidth-BALL_RADIUS+.004,'Selected ball must stay in the single-file lane');
-    assert(x-offset>TRAY.centerX-TRAY.halfLength&&x-offset<TRAY.centerX+TRAY.halfLength,'Selected ball must stay between lane end stops');
-    assert(y>.5&&y<1,'Selected ball must rest on the receiving tray');
+    assert(Math.abs(z-portZ)<tray.halfWidth-BALL_RADIUS+.004,'Selected ball must stay in the single-file lane');
+    assert(x-offset>tray.centerX-tray.halfLength&&x-offset<tray.centerX+tray.halfLength,'Selected ball must stay between lane end stops');
+    const restY=tray.y+(x-offset-tray.centerX)*Math.tan(tray.slope)+(.025+BALL_RADIUS)/Math.cos(tray.slope);
+    assert(Math.abs(y-restY)<.02,'Selected ball must rest on the tray floor, below its cover');
     if(event.color==='red') {
       assert(x>previousX+BALL_RADIUS*1.7,'Red balls must retain extraction order along the lane');
       previousX=x;
