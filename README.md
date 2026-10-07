@@ -72,3 +72,7 @@ GitHub Actions 负责构建与物理检查。Cloudflare 已连接该仓库的 ma
 新玩法通过 src/extended-physics.ts 接入同一物理 Worker。npm test 另外检查每种新玩法六个种子的完整开奖、数量、范围、去重或位置、特别号码、接球槽内顺序、完整物理状态回放；测试报告生成于本地 artifacts，不包含部署凭据。可以单独运行 npx tsx scripts/verify-extended.ts kl8。
 
 参考：[中国福彩设备与球组采购（2026-07-07）](https://www.ccgp.gov.cn/cggg/zygg/cjgg/202607/t20260707_26887424.htm)、[AKANIS 气流设备](https://www.akanis.tech/)、[Ipomee](https://www.ryo-catteau.com/en/ipomee.htm)、[Stresa](https://www.ryo-catteau.com/en/stresa.htm)。
+
+## 混合强度修订（2026-10-07）
+
+大乐透与福彩 3D 使用 v3 气流：降低中央射流、旋流和扰动，仓顶附近平滑削弱上升风；风机用 1.2 秒渐进启动。12 组固定种子配对检查的平均动能为旧 v2 的 78.9%，同时检查上半仓覆盖、球色独立性与仓体边界。七乐彩和快乐 8 使用机械搅拌，转速独立从 8 降为 6 rad/s，模型升级机械 v2。双色球保持原模型与 8 rad/s 参数。旧模型历史号码保留，不用新参数误回放。

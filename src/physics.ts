@@ -52,7 +52,7 @@ export class Chamber {
   open = false; nextOpen = 0; events: DrawEvent[] = [];
   lockTick=-1;outletOpen=false;
   lastAngle = 0;
-  constructor(public world: RAPIER.World, public color: 'red' | 'blue', public offset: number, count: number, rng: () => number, public airflow=false, public tray=TRAY) {
+  constructor(public world: RAPIER.World, public color: 'red' | 'blue', public offset: number, count: number, rng: () => number, public airflow=false, public tray=TRAY, public motorSpeed=ANGULAR_SPEED) {
     const fixed = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(offset, 0, 0)), shell = shellGeometry();
     world.createCollider(RAPIER.ColliderDesc.trimesh(shell.vertices, shell.indices).setFriction(0.2).setRestitution(0.48), fixed);
     // A tiled floor with an actual opening. No invisible attraction or chosen ball.
@@ -103,8 +103,13 @@ export class Chamber {
   }
   setGate(open: boolean) { this.open = open; this.gate.setEnabled(!open); }
   advanceLock(tick:number){if(this.lockTick>=0&&tick>=this.lockTick+12){this.outletOpen=true;this.outletGate.setEnabled(false);}}
+  private blowerStart: number | undefined;
   drive(tick: number, moving: boolean, phase: number) {
     if(this.airflow) {
+      if (!moving) this.blowerStart = undefined;
+      else this.blowerStart ??= tick;
+      const ramp = moving ? Math.min(1,Math.max(0,(tick-this.blowerStart!)*DT/1.2)) : 0;
+      const gain = ramp*ramp*(3-2*ramp);
       for(const ball of this.balls) {
         const body=ball.body;body.resetForces(true);
         if(!moving||ball.selected) continue;
@@ -112,13 +117,13 @@ export class Chamber {
         // Once a ball is in the isolated outlet it falls under gravity, without jet force.
         if(p.y<FLOOR_Y) continue;
         const wind=airVelocity(p.x-this.offset,p.y-CENTER_Y,p.z,tick*DT,phase),v=body.linvel();
-        const dx=wind.x-v.x,dy=wind.y-v.y,dz=wind.z-v.z;
+        const dx=wind.x*gain-v.x,dy=wind.y*gain-v.y,dz=wind.z*gain-v.z;
         const drag=.5*1.225*.47*Math.PI*BALL_RADIUS**2*Math.hypot(dx,dy,dz);
         body.addForce({x:drag*dx,y:drag*dy,z:drag*dz},true);
       }
       return;
     }
-    if(moving)this.lastAngle=tick*DT*ANGULAR_SPEED+phase;
+    if(moving)this.lastAngle=tick*DT*this.motorSpeed+phase;
     this.rotors.forEach((rotor, i) => {
       const a = (i === 0 ? 1 : -1) * this.lastAngle;
       const tilt = 0, st=Math.sin(tilt/2), ct=Math.cos(tilt/2), sa=Math.sin(a/2), ca=Math.cos(a/2);

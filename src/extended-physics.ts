@@ -7,7 +7,7 @@ export class ExtendedSimulation {
   constructor(public seed:number,public game:GameId) {
     this.world.timestep=DT;this.world.numSolverIterations=8;
     const rng=randomGenerator(seed),config=GAMES[game];this.phaseOffset=rng()*6;
-    this.chambers=config.offsets.map((x,i)=>new Chamber(this.world,game==='fc3d'?'blue':'red',x,config.counts[i],rng,config.mixing==='airflow',receivingTray(game)));
+    this.chambers=config.offsets.map((x,i)=>new Chamber(this.world,game==='fc3d'?'blue':'red',x,config.counts[i],rng,config.mixing==='airflow',receivingTray(game),config.mixing==='mechanical'?6:8));
     if(game==='kl8') {
       const slots=Array.from({length:80},(_,i)=>i);
       for(let i=79;i>0;i--){const j=Math.floor(rng()*(i+1));[slots[i],slots[j]]=[slots[j],slots[i]];}
