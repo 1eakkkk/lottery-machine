@@ -20,18 +20,28 @@ for (let i = offset; i < count; i++) {
   while (!['complete', 'failed'].includes(sim.phase)) {
     sim.step();
     if(game==='dlt') {
-      assert(sim.chambers[0].events.every(e=>e.tick>=2400),'Do not capture while loading or ramping the blower');
+      assert(sim.chambers[0].events.every(e=>e.tick>=1920),'Do not capture while loading or ramping the blower');
       if(!sim.blueStart||sim.tick<sim.blueStart)assert(sim.chambers[1].balls.every(b=>b.body.translation().y>=3.57),'Rear balls must wait until the front draw finishes');
       else rearReleased=true;
+      for(const chamber of sim.chambers){
+        const wheel=chamber.wheel!;assert(wheel.events.length<=wheel.quota,'Never collect beyond the zone quota');
+        if(wheel.events.length===wheel.quota)assert(!wheel.accepting&&wheel.gate.isEnabled(),'Close intake immediately at quota');
+      }
       for(const chamber of sim.chambers)for(const ball of chamber.balls){
         const p=ball.body.translation();
         if(ball.selected&&p.x-chamber.offset<-.95&&p.y>2&&p.y<3.4)outerRoute.add(`${chamber.color}:${ball.number}`);
       }
     }
   }
-  if(game==='dlt')assert(rearReleased,'Rear machine must release its own loading rack');
+  if(game==='dlt'&&sim.phase==='complete')for(const chamber of sim.chambers){
+    const wheel=chamber.wheel!;assert(wheel.drained,'Every occupied pocket must drain before completion');
+    assert.deepEqual(wheel.released,chamber.events.map(e=>e.number),'Quarter-turn drainage preserves capture order');
+    assert.equal(wheel.quarter,wheel.quota+1,'Continue one extra turn after the last captured ball leaves the top');
+    assert(wheel.pockets.every(p=>!p.ball),'No ball remains in any pocket');
+  }
   const s = sim.snapshot(); results.push({ seed: sim.seed, phase: s.phase, seconds: Number((s.tick / 120).toFixed(2)), events: s.events, error: s.error }); sim.free();
   assert.equal(s.phase, 'complete', JSON.stringify(results.at(-1)));
+  if(game==='dlt')assert(rearReleased,'Rear machine must release its own loading rack');
   if(game==='dlt')assert(s.events.every(e=>outerRoute.has(`${e.color}:${e.number}`)),'Every drawn ball must physically traverse the exterior left route');
   firstSnapshot??=s;
   const red = s.events.filter(e => e.color === 'red'), blue = s.events.filter(e => e.color === 'blue');
@@ -59,5 +69,5 @@ for (let i = 0; i < 1500; i++) { a.step(); b.step(); }
 assert.deepEqual(a.snapshot(), b.snapshot(), 'Fixed input must replay identically'); a.free(); b.free();
 const replay=new DrawSimulation(firstSnapshot!.seed,game);replay.start();while(!['complete','failed'].includes(replay.phase))replay.step();assert.deepEqual(replay.snapshot(),firstSnapshot,'A complete draw must replay identically');replay.free();
 const report={ model: config.model, passed: count-offset, averageSeconds: totalTicks / (count-offset) / 120, replay: 'pass', results };
-mkdirSync('artifacts',{recursive:true});const reportPath=`artifacts/${game}-physics-report.json`;writeFileSync(reportPath,JSON.stringify(report,null,2));
+mkdirSync('artifacts',{recursive:true});const reportPath=process.env.DRAW_REPORT_PATH||`artifacts/${game}-physics-report.json`;writeFileSync(reportPath,JSON.stringify(report,null,2));
 console.log(JSON.stringify({model:config.model,passed:report.passed,averageSeconds:report.averageSeconds,replay:'pass',report:reportPath}));

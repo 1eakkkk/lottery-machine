@@ -1,14 +1,16 @@
 import * as THREE from 'three';
 import { numberedBallSurface } from './ball-label';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GAMES, receivingTray, eventZone, type GameId } from './games';
+import { VENUS_WHEEL } from './venus-wheel';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { GAMES, receivingTray, eventZone, dltBallColor, type GameId } from './games';
 import { BALL_RADIUS, CHAMBER_RADIUS, CENTER_Y, FLOOR_Y, PORT_Z, PORT_RADIUS,TUBE_RADIUS, ROTOR_Y, ROTOR_X, ROTOR_Z, ANGULAR_SPEED, DT, DLT_PORT_Y, dltChuteGeometry, dltLoadingPosition, floorGeometry,tubeGeometry, type Snapshot } from './physics';
 
 export class MachineScene {
   renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); camera: THREE.PerspectiveCamera; controls: OrbitControls;
   balls: THREE.Mesh[] = []; rotors: THREE.Group[][] = []; gates: THREE.Mesh[] = [];
   outletGates:THREE.Mesh[]=[];
-  captureHeads:THREE.Group[]=[];
+  wheelGroups:THREE.Group[]=[];
   private currentView = 'all';
   private resultRack = new THREE.Group();
   private resultMoves: { ball: THREE.Mesh; from: THREE.Vector3; rotation: THREE.Quaternion; to: THREE.Vector3; start: number }[] = [];
@@ -21,7 +23,12 @@ export class MachineScene {
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7));
     this.renderer.setClearColor('#eeeee9'); this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.3;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = game==='dlt'?1:1.3;
+    if(game==='dlt'){
+      const room=new RoomEnvironment(),generator=new THREE.PMREMGenerator(this.renderer);
+      this.scene.environment=generator.fromScene(room,.04).texture;
+      this.scene.environmentIntensity=.65;room.dispose();generator.dispose();
+    }
     this.renderer.domElement.setAttribute('aria-label', `${GAMES[game].title}三维开奖机器，可拖动旋转视角`);
     this.container.append(this.renderer.domElement);
     this.scene.fog = new THREE.Fog('#eeeee9', 35, 65);
@@ -33,12 +40,12 @@ export class MachineScene {
     this.controls.maxPolarAngle = Math.PI / 2; this.controls.minPolarAngle = .1;
     this.renderer.domElement.tabIndex = 0; this.controls.listenToKeyEvents(this.renderer.domElement);
     this.configureGestures();
-    this.scene.add(new THREE.HemisphereLight('#ffffff', '#b3b3a8', 3));
-    const key = new THREE.DirectionalLight('#fff7e5', 4); key.position.set(-3, 7, 5); key.castShadow = true;
+    this.scene.add(new THREE.HemisphereLight('#ffffff', '#b3b3a8', game==='dlt'?1.4:3));
+    const key = new THREE.DirectionalLight('#fff7e5', game==='dlt'?3:4); key.position.set(-3, 7, 5); key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024); key.shadow.camera.left = -6; key.shadow.camera.right = 6;
     key.shadow.camera.top = 6; key.shadow.camera.bottom = -6; key.shadow.bias = -0.001;
     this.scene.add(key);
-    const fill = new THREE.DirectionalLight('#d6e4ff', 2); fill.position.set(4, 4, -3); this.scene.add(fill);
+    const fill = new THREE.DirectionalLight('#d6e4ff', game==='dlt'?1:2); fill.position.set(4, 4, -3); this.scene.add(fill);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ color: '#eeeee9', roughness: 0.78 }));
     floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; this.scene.add(floor);
     const config=GAMES[game];
@@ -118,8 +125,9 @@ export class MachineScene {
     const white = this.material('#dcded8', 0.2);
     if(venus) {
       this.mesh(new THREE.CylinderGeometry(.74,.74,.10,48),steel,x,.12,-.1);
-      this.mesh(new THREE.CylinderGeometry(.70,.65,.78,48),white,x,.53,-.1);
-      this.mesh(new THREE.CylinderGeometry(.77,.77,.085,48),steel,x,.96,-.1);
+      this.mesh(new THREE.CylinderGeometry(.70,.65,.30,48),white,x,.29,-.1);
+      this.mesh(new THREE.CylinderGeometry(.77,.77,.085,48),steel,x,.48,-.1);
+      this.mesh(new THREE.CylinderGeometry(.075,.075,1.05,24),steel,x,1.045,-.14);
     } else {
     this.mesh(new THREE.BoxGeometry(1.40,.10,.94),steel,x,.12,-.1);
     this.mesh(new THREE.BoxGeometry(1.32,1.32,.82),white,x,.84,-.1);
@@ -132,9 +140,11 @@ export class MachineScene {
     }
     const radius = Math.sqrt(CHAMBER_RADIUS ** 2 - (FLOOR_Y - CENTER_Y) ** 2);
     this.ring(radius, x, FLOOR_Y, 0, bronze);
-    const glass = new THREE.MeshPhysicalMaterial({ color: '#d5e4df', metalness: 0, roughness: 0.08, transparent: true, opacity: 0.065, side: THREE.DoubleSide, depthWrite: false });
+    const glass = new THREE.MeshPhysicalMaterial({ color:venus?'#e8f1f5':'#d5e4df', metalness:0, roughness:venus?.035:.08, transparent:true, opacity:venus?.19:.065, side:THREE.DoubleSide,depthWrite:false,ior:1.49,specularIntensity:1,envMapIntensity:venus?1.8:1,clearcoat:venus?.85:0,clearcoatRoughness:.04 });
     const angle = Math.acos((FLOOR_Y - CENTER_Y) / CHAMBER_RADIUS);
-    this.mesh(new THREE.SphereGeometry(CHAMBER_RADIUS, 64, 40, 0, Math.PI * 2, 0, angle), glass, x, CENTER_Y, 0).castShadow = false;
+    const bowlGlass=glass.clone();
+    if(venus){bowlGlass.opacity=1;bowlGlass.transmission=.96;bowlGlass.thickness=.014;bowlGlass.side=THREE.FrontSide;bowlGlass.clearcoat=0;bowlGlass.envMapIntensity=.8;}
+    this.mesh(new THREE.SphereGeometry(CHAMBER_RADIUS, 64, 40, 0, Math.PI * 2, 0, angle), bowlGlass, x, CENTER_Y, 0).castShadow = false;
     const meridian = new THREE.Mesh(new THREE.TorusGeometry(CHAMBER_RADIUS + 0.007, 0.011, 8, 100, angle * 2), bronze);
     meridian.rotation.z = Math.PI / 2 - angle; meridian.position.set(x, CENTER_Y, 0); this.scene.add(meridian);
     const meridian2 = meridian.clone(); meridian2.rotation.y = Math.PI / 2; this.scene.add(meridian2);
@@ -160,7 +170,7 @@ export class MachineScene {
       }
       // Transparent support arch and central actuator visible in the reference.
 
-      const arch=this.mesh(new THREE.TorusGeometry(1.24,.023,8,80),loadingGlass,x,CENTER_Y,0);
+      const arch=this.mesh(new THREE.TorusGeometry(1.36,.018,8,80),loadingGlass,x,CENTER_Y,0);
       arch.rotation.y=0;
     }
     const rotorGroups: THREE.Group[] = [];
@@ -193,12 +203,21 @@ export class MachineScene {
       const guide=dltChuteGeometry(),geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(guide.vertices,3));geometry.setIndex(new THREE.BufferAttribute(guide.indices,1));geometry.computeVertexNormals();
       const guideGlass=glass.clone();guideGlass.opacity=.38;this.mesh(geometry,guideGlass,x,0,0);
     }
-    const capture=new THREE.Group();capture.position.set(x,DLT_PORT_Y,0);if(venus){this.scene.add(capture);this.captureHeads.push(capture);
-      this.mesh(new THREE.CylinderGeometry(.174,.174,.31,32,1,true),glass.clone(),0,.045,0,capture);
-      this.mesh(new THREE.BoxGeometry(.045,.36,.035),bronze,.16,.05,0,capture);
+    if(venus){
+      const wheel=new THREE.Group();wheel.position.set(x,VENUS_WHEEL.centerY,0);this.scene.add(wheel);this.wheelGroups.push(wheel);
+      const wheelGlass=glass.clone();wheelGlass.opacity=.34;
+      this.mesh(new THREE.TorusGeometry(VENUS_WHEEL.radius,.035,12,120),wheelGlass,0,0,0,wheel);
+      for(let i=0;i<4;i++){
+        const a=Math.PI/2+i*Math.PI/2,px=VENUS_WHEEL.radius*Math.cos(a),py=VENUS_WHEEL.radius*Math.sin(a);
+        this.mesh(new THREE.TorusGeometry(.164,.023,12,40),wheelGlass,px,py,.09,wheel);
+        this.mesh(new THREE.CylinderGeometry(.168,.168,.28,32,1,true),wheelGlass,px,py,0,wheel).rotation.x=Math.PI/2;
+        this.mesh(new THREE.TorusGeometry(.062,.014,8,24),steel,px,py,-.13,wheel);
+      }
+      const feed=new THREE.CylinderGeometry(.112,.20,.40,32,1,true);this.mesh(feed,glass.clone(),x,3.65,0);
+    } else {
+      this.gates.push(this.mesh(new THREE.CylinderGeometry(PORT_RADIUS+.02,PORT_RADIUS+.02,.036,32),dark,x,FLOOR_Y-.03,portZ));
+      this.outletGates.push(this.mesh(new THREE.CylinderGeometry(PORT_RADIUS+.02,PORT_RADIUS+.02,.036,32),dark,x,FLOOR_Y-.26,portZ));
     }
-    this.gates.push(this.mesh(new THREE.CylinderGeometry(PORT_RADIUS + 0.02, PORT_RADIUS + 0.02, 0.036, 32), dark, venus?0:x, venus?.205:FLOOR_Y-.03, portZ,venus?capture:undefined));
-    this.outletGates.push(this.mesh(new THREE.CylinderGeometry(PORT_RADIUS+.02,PORT_RADIUS+.02,.036,32),dark,venus?0:x,venus?-.11:FLOOR_Y-.26,portZ,venus?capture:undefined));
     this.mesh(new THREE.BoxGeometry(tray.halfLength*2, .05, tray.halfWidth*2), steel, x+tray.centerX, tray.y, portZ).rotation.z=tray.slope;
     const railGlass=glass.clone();railGlass.opacity=.23;
     if(tray.halfLength>2||venus) {
@@ -209,8 +228,19 @@ export class MachineScene {
       this.mesh(new THREE.BoxGeometry(tray.halfLength*2+.05, tray.wallHalfHeight*2, .05), railGlass, x+tray.centerX, tray.wallY, portZ+side*(tray.halfWidth+.025));
       this.mesh(new THREE.BoxGeometry(.05, tray.wallHalfHeight*2, tray.halfWidth*2), steel, x+tray.centerX+side*(tray.halfLength+.025), tray.wallY, portZ);
     }
-    this.mesh(new THREE.PlaneGeometry(.88,.22),new THREE.MeshBasicMaterial({map:this.textTexture('一刻开奖','#ffffff','#234771')}),x,venus?.55:1.02,venus?.61:.34);
-    this.mesh(new THREE.PlaneGeometry(.70,.18),new THREE.MeshBasicMaterial({map:this.textTexture(name,'#dce7f1','#234771')}),x,venus?.35:.82,venus?.61:.34);
+    if(venus){
+      // A curved decal follows the tapered base's surface, rather than floating
+      // in front of the cylinder as a rectangular plane.
+      for(const [text,y,height,width] of [['一刻开奖',.33,.10,.86],[name,.21,.08,.70]] as const){
+        const radius=.65+((y-.14)/.30)*.05+.002;
+        const taper=height*.05/(2*.30);
+        const label=new THREE.CylinderGeometry(radius+taper,radius-taper,height,48,1,true,-width/(2*radius),width/radius);
+        this.mesh(label,new THREE.MeshStandardMaterial({map:this.textTexture(text,'#ffffff','#234771'),roughness:.46,metalness:0,polygonOffset:true,polygonOffsetFactor:-1}),x,y,-.1);
+      }
+    } else {
+      this.mesh(new THREE.PlaneGeometry(.88,.22),new THREE.MeshBasicMaterial({map:this.textTexture('一刻开奖','#ffffff','#234771')}),x,1.02,.34);
+      this.mesh(new THREE.PlaneGeometry(.70,.18),new THREE.MeshBasicMaterial({map:this.textTexture(name,'#dce7f1','#234771')}),x,.82,.34);
+    }
     const ballGeometry = new THREE.SphereGeometry(BALL_RADIUS, 32, 24);
     const labelGeometry = numberedBallSurface(BALL_RADIUS + .0012);
     const grain = new Uint8Array(64 * 64);
@@ -219,9 +249,11 @@ export class MachineScene {
     rubberTexture.wrapS = rubberTexture.wrapT = THREE.RepeatWrapping;
     const ballMaterial = new THREE.MeshPhysicalMaterial({ color, roughness: .45, metalness: 0, clearcoat: .12, clearcoatRoughness: .48, bumpMap: rubberTexture, bumpScale: .00015 });
     for (let i = 0; i < count; i++) {
-      const ball = this.mesh(ballGeometry, ballMaterial, x, 2.8, 0);
+      const material=venus?ballMaterial.clone():ballMaterial;
+      if(venus)material.color.set(dltBallColor(i+1,name.startsWith('后区')));
+      const ball = this.mesh(ballGeometry, material, x, 2.8, 0);
       const labelCanvas=document.createElement('canvas');labelCanvas.width=128;labelCanvas.height=128;
-      const ctx=labelCanvas.getContext('2d')!;ctx.fillStyle=venus?'#111514':'#fff9ed';ctx.beginPath();if(venus)ctx.roundRect(19,19,90,90,17);else ctx.arc(64,64,58,0,Math.PI*2);ctx.fill();ctx.fillStyle=venus?'#f5dc34':'#080808';ctx.font=venus?'700 59px Arial':'600 62px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
+      const ctx=labelCanvas.getContext('2d')!;ctx.fillStyle=venus?'#111514':'#fff9ed';ctx.beginPath();if(venus)ctx.rect(21,21,86,86);else ctx.arc(64,64,58,0,Math.PI*2);ctx.fill();ctx.fillStyle=venus?'#f5dc34':'#080808';ctx.font=venus?'700 66px Arial':'600 62px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
       const number=venus?String(i+1).padStart(2,'0'):String(this.game==='fc3d'?i:i+1);
       ctx.fillText(number,64,(number==='6'||number==='9'||venus&&(number==='06'||number==='09'))?61:67);
       // The orientation mark is printed on the same curved surface as the digit.
@@ -260,7 +292,7 @@ export class MachineScene {
       const tilt=0,st=Math.sin(tilt/2),ct=Math.cos(tilt/2),sa=Math.sin(a/2),ca=Math.cos(a/2);
       rotor.quaternion.set(-st*sa,ct*sa,st*ca,ct*ca);
     }));
-    this.captureHeads.forEach((head,i)=>{const p=s.captureHeads?.[i];if(p)head.position.set(p[0],p[1],p[2]);});
+    this.wheelGroups.forEach((wheel,i)=>{wheel.rotation.z=s.wheelAngles?.[i]??0;});
     this.gates.forEach((gate, i) => { gate.visible = !s.gate[i]; });
     this.outletGates.forEach((gate,i)=>{gate.visible=!s.outlet[i];});
     if(s.phase==='complete'&&!this.resultShown) {
@@ -289,8 +321,8 @@ export class MachineScene {
     else if(name==='tray'){const tray=receivingTray(this.game),x=GAMES[this.game].offsets[0]+tray.centerX,z=this.game==='dlt'?0:PORT_Z;this.camera.position.set(x,tray.y+.9,z+Math.max(3,(tray.halfLength*2+.4)/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));this.controls.target.set(x,tray.y+.15,z);}
     else if(['red','blue','third'].includes(name)) {
       const x=GAMES[this.game].offsets[['red','blue','third'].indexOf(name)]??0;
-      this.camera.position.set(x-(this.game==='dlt'?.15:0),3.5,Math.max(this.game==='dlt'?5.4:4.4,(this.game==='dlt'?3.1:2.4)/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));
-      this.controls.target.set(x-(this.game==='dlt'?.15:0),this.game==='dlt'?2.75:2.5,0);
+      this.camera.position.set(x-(this.game==='dlt'?.15:0),this.game==='dlt'?3.1:3.5,Math.max(this.game==='dlt'?8.0:4.4,(this.game==='dlt'?3.1:2.4)/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));
+      this.controls.target.set(x-(this.game==='dlt'?.15:0),this.game==='dlt'?2.35:2.5,0);
     }
     else {
       const distance = Math.max(this.game==='dlt'?9.3:7.2, (this.game==='fc3d'?8.8:this.game==='kl8'?6:this.game==='dlt'?6.4:GAMES[this.game].counts.length===1?3.8:5.8) / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * this.camera.aspect));
