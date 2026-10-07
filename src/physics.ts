@@ -179,7 +179,7 @@ export class Chamber {
 
         // Once a ball is in the isolated outlet it falls under gravity, without jet force.
         if(p.y<FLOOR_Y) continue;
-        const wind=(this.venus?venusAirVelocity:airVelocity)(p.x-this.offset,p.y-CENTER_Y,p.z,tick*DT,phase),v=body.linvel();
+        const wind=this.venus?venusAirVelocity(p.x-this.offset,p.y-CENTER_Y,p.z,tick*DT,phase,!!(this.wheel?.accepting||this.wheel?.pending)):airVelocity(p.x-this.offset,p.y-CENTER_Y,p.z,tick*DT,phase),v=body.linvel();
         const dx=wind.x*gain-v.x,dy=wind.y*gain-v.y,dz=wind.z*gain-v.z;
         const drag=.5*1.225*.47*Math.PI*BALL_RADIUS**2*Math.hypot(dx,dy,dz);
         body.addForce({x:drag*dx,y:drag*dy,z:drag*dz},true);

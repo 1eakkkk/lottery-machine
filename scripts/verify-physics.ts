@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import { DrawSimulation, initializePhysics, randomGenerator, TRAY, PORT_Z, BALL_RADIUS, blowerGain } from '../src/physics.ts';
-import { venusCycleGain } from '../src/airflow.ts';
+import { venusCycleGain,venusAirVelocity } from '../src/airflow.ts';
 import { receivingTray } from '../src/games.ts';
 import { GAMES } from '../src/games.ts';
 await initializePhysics();
@@ -9,7 +9,7 @@ const game=process.argv[2]==='dlt'?'dlt':'ssq',config=GAMES[game];
 const tray=receivingTray(game),portZ=game==='dlt'?0:PORT_Z;
 const count = Number(process.env.DRAW_TEST_COUNT || 12);
 const offset=Number(process.env.DRAW_TEST_OFFSET||0);
-if(game==='dlt'){for(let t=0;t<6;t+=.05)assert(venusCycleGain(t)>0&&venusCycleGain(t)<=1,'The blower never stops during a strong/weak cycle');assert(venusCycleGain(1)>venusCycleGain(2.5));assert.equal(blowerGain(0,true),0);assert(blowerGain(3,true)<blowerGain(6,true));assert(blowerGain(6,true)<blowerGain(10,true));assert.equal(blowerGain(10,true),1);}
+if(game==='dlt'){for(let t=0;t<30;t+=.05)assert(venusCycleGain(t)>=.72&&venusCycleGain(t)<=1,'Continuous wind must not nearly collapse each cycle');assert(venusAirVelocity(0,0,0,0,0).y>10);assert(venusAirVelocity(.6,0,0,0,0).y<0,'Peripheral flow returns downward');assert(venusAirVelocity(.4,.85,0,0,0).x>0,'Upper flow must not concentrate balls at the roof centre');assert.equal(blowerGain(0,true),0);assert(blowerGain(3,true)<blowerGain(6,true));assert(blowerGain(6,true)<blowerGain(10,true));assert.equal(blowerGain(10,true),1);}
 let totalTicks = 0; const results = [];let firstSnapshot;
 for (let i = offset; i < count; i++) {
   const special=[0,1,4294967295,42];
@@ -22,12 +22,13 @@ for (let i = offset; i < count; i++) {
       for(let row=0;row<7;row++){const ball=front[group*7+row],p=ball.body.translation();assert.equal(ball.number,group*7+row+1);assert(Math.abs(p.x-anchor.x)<.00001&&Math.abs(p.z-anchor.z)<.00001,'Each seven-number color group occupies one loading column');assert(Math.abs(p.y-anchor.y-row*.175)<.00001,'Each column stacks seven separate balls');}
     }assert.equal(columns.size,5,'Five distinct front loading columns');
   }
-  let rearReleased=false;const mixingHeights:number[]=[];
+  let rearReleased=false;const mixingSamples:{upper:number,lower:number}[]=[],rearMixingSamples:{upper:number,lower:number,pinned:number}[]=[];
   const outerRoute=new Set<string>();
   while (!['complete', 'failed'].includes(sim.phase)) {
     sim.step();
     if(game==='dlt') {
-      if(sim.tick>=1200&&sim.tick<=1920&&sim.tick%24===0)mixingHeights.push(sim.chambers[0].balls.reduce((sum,b)=>sum+b.body.translation().y,0)/35);
+      if(sim.tick>=1200&&sim.tick<=1920&&sim.tick%24===0){const heights=sim.chambers[0].balls.map(b=>b.body.translation().y);mixingSamples.push({upper:heights.filter(y=>y>3.25).length,lower:heights.filter(y=>y<2.5).length});}
+      if(sim.blueStart&&sim.tick>=sim.blueStart+1200&&sim.tick<sim.blueStart+1680&&sim.tick%24===0){const balls=sim.chambers[1].balls;rearMixingSamples.push({upper:balls.filter(b=>b.body.translation().y>3.1).length,lower:balls.filter(b=>b.body.translation().y<2.65).length,pinned:balls.filter(b=>b.body.translation().y>3.4&&Math.abs(b.body.linvel().y)<.15).length});}
       assert(sim.chambers[0].events.every(e=>e.tick>=1920),'Do not capture while loading or ramping the blower');
       if(!sim.blueStart||sim.tick<sim.blueStart)assert(sim.chambers[1].balls.every(b=>b.body.translation().y>=3.57),'Rear balls must wait until the front draw finishes');
       else rearReleased=true;
@@ -49,7 +50,8 @@ for (let i = offset; i < count; i++) {
   }
   const s = sim.snapshot(); results.push({ seed: sim.seed, phase: s.phase, seconds: Number((s.tick / 120).toFixed(2)), events: s.events, error: s.error }); sim.free();
   assert.equal(s.phase, 'complete', JSON.stringify(results.at(-1)));
-  if(game==='dlt'){assert(Math.min(...mixingHeights)<2.6,'Weak cycles must let the ball cloud fall away from the roof');assert(Math.max(...mixingHeights)>2.95,'On cycles must lift the cloud into the upper chamber');}
+  if(game==='dlt'){assert(mixingSamples.filter(s=>s.upper>=3&&s.lower>=3).length/mixingSamples.length>.8,'Upper and lower balls must coexist rather than rise and fall as one cloud');assert(mixingSamples.every(s=>s.upper<25),'Most balls must not remain pinned at the roof');}
+  if(game==='dlt'){assert(rearMixingSamples.length>0);assert(rearMixingSamples.filter(s=>s.upper>=1&&s.lower>=1).length/rearMixingSamples.length>.8,'Rear balls also circulate across upper and lower regions');assert(rearMixingSamples.every(s=>s.pinned<=2),'Closed rear intake must not store a stationary stack in the feed funnel');}
   if(game==='dlt')assert(rearReleased,'Rear machine must release its own loading rack');
   if(game==='dlt')assert(s.events.every(e=>outerRoute.has(`${e.color}:${e.number}`)),'Every drawn ball must physically traverse the exterior left route');
   firstSnapshot??=s;
