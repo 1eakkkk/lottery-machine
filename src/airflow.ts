@@ -34,3 +34,10 @@ export function venusAirVelocity(x:number,y:number,z:number,seconds:number,phase
     y:up*jet-5*(1-jet)+.45*Math.sin(x*6-z*5+seconds*4.1+phase),
     z:circulation*z+swirl*x+gust*Math.sin(x*8-seconds*3.3+phase)};
 }
+
+/** Experimental pulsed blower: 1.8 s powered, 1.2 s fully off, with 0.2 s
+ * smooth edges. Global timing only; no dependence on ball identities or results. */
+export function venusPulseGain(seconds:number){
+  const t=((seconds%3)+3)%3,smooth=(v:number)=>{v=Math.max(0,Math.min(1,v));return v*v*(3-2*v);};
+  return smooth(t/.2)*smooth((1.8-t)/.2);
+}

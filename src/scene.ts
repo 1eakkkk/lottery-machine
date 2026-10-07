@@ -157,9 +157,9 @@ export class MachineScene {
     const deckMaterial=venus?glass.clone():steel.clone();deckMaterial.side=THREE.DoubleSide;if(venus){(deckMaterial as THREE.MeshPhysicalMaterial).opacity=.14;}this.mesh(deckGeometry,deckMaterial,x,0,0);
     if(venus) {
       const loadingGlass=glass.clone();loadingGlass.opacity=.22;
-      const columns=count===35?7:4,layers=Math.ceil(count/columns),height=layers*.19+.12;
+      const columns=count===35?5:4,layers=Math.ceil(count/columns),height=layers*.175+.20;
       for(let column=0;column<columns;column++) {
-        const slot=dltLoadingPosition(column,count);
+        const slot=dltLoadingPosition(count===35?column*7:column,count);
         this.mesh(new THREE.CylinderGeometry(.108,.108,height,24,1,true),loadingGlass,x+slot.x,3.45+height/2,slot.z);
         this.ring(.113,x+slot.x,3.45,slot.z,steel);this.ring(.113,x+slot.x,3.45+height,slot.z,steel);
       }
@@ -321,8 +321,8 @@ export class MachineScene {
     else if(name==='tray'){const tray=receivingTray(this.game),x=GAMES[this.game].offsets[0]+tray.centerX,z=this.game==='dlt'?0:PORT_Z;this.camera.position.set(x,tray.y+.9,z+Math.max(3,(tray.halfLength*2+.4)/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));this.controls.target.set(x,tray.y+.15,z);}
     else if(['red','blue','third'].includes(name)) {
       const x=GAMES[this.game].offsets[['red','blue','third'].indexOf(name)]??0;
-      this.camera.position.set(x-(this.game==='dlt'?.15:0),this.game==='dlt'?3.1:3.5,Math.max(this.game==='dlt'?8.0:4.4,(this.game==='dlt'?3.1:2.4)/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));
-      this.controls.target.set(x-(this.game==='dlt'?.15:0),this.game==='dlt'?2.35:2.5,0);
+      this.camera.position.set(x-(this.game==='dlt'?.15:0),this.game==='dlt'?3.2:3.5,Math.max(this.game==='dlt'?8.8:4.4,(this.game==='dlt'?3.1:2.4)/(2*Math.tan(THREE.MathUtils.degToRad(18))*this.camera.aspect)));
+      this.controls.target.set(x-(this.game==='dlt'?.15:0),this.game==='dlt'?2.50:2.5,0);
     }
     else {
       const distance = Math.max(this.game==='dlt'?9.3:7.2, (this.game==='fc3d'?8.8:this.game==='kl8'?6:this.game==='dlt'?6.4:GAMES[this.game].counts.length===1?3.8:5.8) / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * this.camera.aspect));

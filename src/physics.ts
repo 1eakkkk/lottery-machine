@@ -1,6 +1,6 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { GAMES } from './games';
-import { airVelocity,venusAirVelocity } from './airflow';
+import { airVelocity,venusAirVelocity,venusPulseGain } from './airflow';
 import { VenusWheel } from './venus-wheel';
 export const MODEL_VERSION = 'ssq-mechanical-v2';
 export const DT = 1 / 120, BALL_RADIUS = 0.082, CHAMBER_RADIUS = 1.08, CENTER_Y = 2.7, FLOOR_Y = 1.94;
@@ -16,8 +16,8 @@ export function randomGenerator(seed: number) {
   return () => { a = (a + 0x6D2B79F5) >>> 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t ^= t + Math.imul(t ^ (t >>> 7), 61 | t); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 export function dltLoadingPosition(slot:number,count:number) {
-  const columns=count===35?7:4, column=slot%columns, layer=Math.floor(slot/columns),angle=column*Math.PI*2/columns+(count===12?Math.PI/4:0);
-  return {x:.60*Math.cos(angle),y:3.58+layer*.19,z:.60*Math.sin(angle)};
+  const columns=count===35?5:4, column=count===35?Math.floor(slot/7):slot%columns, layer=count===35?slot%7:Math.floor(slot/columns),angle=column*Math.PI*2/columns+(count===12?Math.PI/4:Math.PI/2);
+  return {x:.60*Math.cos(angle),y:3.58+layer*.175,z:.60*Math.sin(angle)};
 }
 export const DLT_PORT_Y=3.45;
 export const DLT_TRAY={...TRAY,centerX:-.35,halfLength:1.1,y:.50,wallY:.69,wallHalfHeight:.18};
@@ -144,7 +144,7 @@ export class Chamber {
     for(let i=count-1;i>0;i--){const j=Math.floor(rng()*(i+1));[slots[i],slots[j]]=[slots[j],slots[i]];}
     for (let i = 0; i < count; i++) {
       const layer = Math.floor(slots[i] / 12), cell = slots[i] % 12, x = (cell % 4 - 1.5) * 0.22 + (rng() - 0.5) * 0.02, z = (Math.floor(cell / 4) - 1) * 0.22 + (rng() - 0.5) * 0.02;
-      const loading=venus?dltLoadingPosition(slots[i],count):{x,y:2.63+layer*.2,z};
+      const loading=venus?dltLoadingPosition(i,count):{x,y:2.63+layer*.2,z};
       const body = world.createRigidBody((venus?RAPIER.RigidBodyDesc.kinematicPositionBased():RAPIER.RigidBodyDesc.dynamic()).setTranslation(offset + loading.x, loading.y, loading.z).setCcdEnabled(true).setLinearDamping(0.12).setAngularDamping(0.15).setCanSleep(false));
       const ballCollider=RAPIER.ColliderDesc.ball(BALL_RADIUS).setMass(airflow?.005:.025).setFriction(venus?.05:airflow?.14:.24).setRestitution(airflow?.62:.66);
       if(venus)ballCollider.setCollisionGroups(0x0001ffff);
@@ -169,7 +169,8 @@ export class Chamber {
       if (!moving) this.blowerStart = undefined;
       else this.blowerStart ??= tick;
       if(this.loadingCap&&moving&&tick-this.blowerStart!>=180)this.loadingCap.setEnabled(true);
-      const gain = moving?blowerGain((tick-this.blowerStart!)*DT,this.venus):0;
+      const elapsed=(tick-this.blowerStart!)*DT;
+      const gain = moving?blowerGain(elapsed,this.venus)*(this.venus?venusPulseGain(elapsed):1):0;
       for(const ball of this.balls) {
         const body=ball.body;body.resetForces(true);
         if(!moving||ball.selected) continue;

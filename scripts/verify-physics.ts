@@ -15,11 +15,18 @@ for (let i = offset; i < count; i++) {
   const seed=i<12?14021+i*193:i<16?special[i-12]:Math.floor(randomGenerator(723145+i)()*4294967296);
   const sim = new DrawSimulation(seed,game); sim.start();
   if(game==='dlt')assert(sim.snapshot().balls.filter((_,j)=>j%8===1).every(y=>y>=3.57),'Both complete ball sets must wait in the peripheral loading rack');
-  let rearReleased=false;
+  if(game==='dlt'){
+    const front=sim.chambers[0].balls;const columns=new Set<string>();
+    for(let group=0;group<5;group++){const anchor=front[group*7].body.translation();columns.add(`${anchor.x.toFixed(5)}:${anchor.z.toFixed(5)}`);
+      for(let row=0;row<7;row++){const ball=front[group*7+row],p=ball.body.translation();assert.equal(ball.number,group*7+row+1);assert(Math.abs(p.x-anchor.x)<.00001&&Math.abs(p.z-anchor.z)<.00001,'Each seven-number color group occupies one loading column');assert(Math.abs(p.y-anchor.y-row*.175)<.00001,'Each column stacks seven separate balls');}
+    }assert.equal(columns.size,5,'Five distinct front loading columns');
+  }
+  let rearReleased=false;const mixingHeights:number[]=[];
   const outerRoute=new Set<string>();
   while (!['complete', 'failed'].includes(sim.phase)) {
     sim.step();
     if(game==='dlt') {
+      if(sim.tick>=1200&&sim.tick<=1920&&sim.tick%24===0)mixingHeights.push(sim.chambers[0].balls.reduce((sum,b)=>sum+b.body.translation().y,0)/35);
       assert(sim.chambers[0].events.every(e=>e.tick>=1920),'Do not capture while loading or ramping the blower');
       if(!sim.blueStart||sim.tick<sim.blueStart)assert(sim.chambers[1].balls.every(b=>b.body.translation().y>=3.57),'Rear balls must wait until the front draw finishes');
       else rearReleased=true;
@@ -41,6 +48,7 @@ for (let i = offset; i < count; i++) {
   }
   const s = sim.snapshot(); results.push({ seed: sim.seed, phase: s.phase, seconds: Number((s.tick / 120).toFixed(2)), events: s.events, error: s.error }); sim.free();
   assert.equal(s.phase, 'complete', JSON.stringify(results.at(-1)));
+  if(game==='dlt'){assert(Math.min(...mixingHeights)<2.6,'Off cycles must let the ball cloud fall away from the roof');assert(Math.max(...mixingHeights)>2.95,'On cycles must lift the cloud into the upper chamber');}
   if(game==='dlt')assert(rearReleased,'Rear machine must release its own loading rack');
   if(game==='dlt')assert(s.events.every(e=>outerRoute.has(`${e.color}:${e.number}`)),'Every drawn ball must physically traverse the exterior left route');
   firstSnapshot??=s;
