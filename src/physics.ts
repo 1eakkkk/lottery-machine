@@ -2,7 +2,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { GAMES } from './games';
 import { airVelocity,venusAirVelocity,venusCycleGain } from './airflow';
 import { VenusWheel } from './venus-wheel';
-export const MODEL_VERSION = 'ssq-mechanical-v3';
+export const MODEL_VERSION = 'ssq-mechanical-v4';
 export const DT = 1 / 120, BALL_RADIUS = 0.082, CHAMBER_RADIUS = 1.08, CENTER_Y = 2.7, FLOOR_Y = 1.94;
 export const PORT_Z = 0.48, PORT_RADIUS = 0.158, ROTOR_Y = 2.08, ROTOR_X = 0.30, ROTOR_Z = 0.24, ANGULAR_SPEED = 8.0;
 export const TUBE_RADIUS=.106;
@@ -82,6 +82,7 @@ type Ball = { body: RAPIER.RigidBody; number: number; selected: boolean };
 export class Chamber {
   balls: Ball[] = []; rotors: RAPIER.RigidBody[] = []; gate: RAPIER.Collider; outletGate:RAPIER.Collider;
   open = false; nextOpen = 0; events: DrawEvent[] = [];
+  nextDrawDelay?:()=>number;
   lockTick=-1;outletOpen=false;
   lastAngle = 0;
   private loadingCap?:RAPIER.Collider;
@@ -200,18 +201,25 @@ export class Chamber {
       const inTube=this.venus?Math.hypot(p.x-this.offset,p.z)<TUBE_RADIUS-BALL_RADIUS+.006:Math.abs(p.x-this.offset)<PORT_RADIUS&&Math.abs(p.z-this.portZ)<PORT_RADIUS;
       if(this.open&&!ball.selected&&inTube&&p.y<(this.venus?DLT_PORT_Y:FLOOR_Y)-.14){this.setGate(false);this.lockTick=tick;}
       if (!ball.selected && p.y < (this.venus?DLT_PORT_Y:FLOOR_Y) - .42 && inTube) {
-        ball.selected = true; this.events.push({ color: this.color, number: ball.number, tick }); this.setGate(false); this.nextOpen = tick + this.drawInterval;this.lockTick=-1;this.outletOpen=false;this.outletGate.setEnabled(true);
+        ball.selected = true; this.events.push({ color: this.color, number: ball.number, tick }); this.setGate(false); this.nextOpen = tick + (this.nextDrawDelay?.()??this.drawInterval);this.lockTick=-1;this.outletOpen=false;this.outletGate.setEnabled(true);
       }
     }
   }
 }
 export class DrawSimulation {
+  private timingRandom:()=>number;
+  private firstOpenTick:number;
+  private firstMixDelay(){return Math.round((9+3*this.timingRandom())*120);}
   world: RAPIER.World; chambers: [Chamber, Chamber]; tick = 0; phase: Phase = 'ready'; started = false; blueStart = 0; error?: string; seedPhase: number;
   constructor(public seed: number, public game:'ssq'|'dlt'='ssq') {
+    // Separate the gate schedule from the ball initialization random stream.
+    this.timingRandom=randomGenerator((seed^0x75ad19c3)>>>0);
+    this.firstOpenTick=game==='ssq'?240+this.firstMixDelay():240+14*120;
     const rng = randomGenerator(seed); this.seedPhase = rng() * 6;
     this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 }); this.world.timestep = DT; this.world.numSolverIterations = 8;
     const config=GAMES[game];
     this.chambers = [new Chamber(this.world, 'red', -1.45, config.counts[0], rng,config.mixing==='airflow',game==='dlt'?DLT_TRAY:TRAY,ANGULAR_SPEED,game==='dlt',game==='ssq'?360:240), new Chamber(this.world, 'blue', 1.45, config.counts[1], rng,config.mixing==='airflow',game==='dlt'?DLT_TRAY:TRAY,ANGULAR_SPEED,game==='dlt',game==='ssq'?360:240)];
+    if(game==='ssq')for(const chamber of this.chambers)chamber.nextDrawDelay=()=>Math.round((5+2*this.timingRandom())*120);
   }
   start() { this.started = true; this.phase = 'loading'; }
   step() {
@@ -220,14 +228,14 @@ export class DrawSimulation {
     const [redTarget,blueTarget]=GAMES[this.game].draws;
     if (this.tick === 240) { this.phase = 'mixing';red.releaseLoadingBalls(); }
     if (this.blueStart&&this.tick===this.blueStart){blue.releaseLoadingBalls();if(this.game==='dlt')this.phase='blue';}
-    if (this.tick === (this.game==='dlt'?240+14*120:960)) { this.phase = 'red'; red.nextOpen = this.tick; }
+    if (this.tick === this.firstOpenTick) { this.phase = 'red'; red.nextOpen = this.tick; }
     const redMoving = this.tick >= 240 && red.events.length < redTarget, blueMoving = this.blueStart > 0 && this.tick >= this.blueStart && (this.game==='ssq'||blue.events.length<blueTarget);
     red.drive(this.tick, redMoving, this.seedPhase); blue.drive(blueMoving ? this.tick - this.blueStart : 0, blueMoving, this.seedPhase + 1);
     if (this.phase === 'red' && red.events.length < redTarget && this.tick >= red.nextOpen&&red.lockTick<0) red.setGate(true);
     if (this.phase === 'blue' && blue.events.length < blueTarget && this.tick >= blue.nextOpen&&blue.lockTick<0) blue.setGate(true);
     red.advanceLock(this.tick);blue.advanceLock(this.tick);
     this.world.step(); red.readCrossings(this.tick); blue.readCrossings(this.tick);
-    if (red.events.length === redTarget && !this.blueStart && (this.game!=='dlt'||red.wheel!.drained&&this.landed(red))) { this.blueStart = this.tick + (this.game==='dlt'?60:180); blue.nextOpen = this.blueStart + (this.game==='dlt'?14*120:720); if(this.game==='ssq')this.phase = 'blue'; }
+    if (red.events.length === redTarget && !this.blueStart && (this.game!=='dlt'||red.wheel!.drained&&this.landed(red))) { this.blueStart = this.tick + (this.game==='dlt'?60:180); blue.nextOpen = this.blueStart + (this.game==='dlt'?14*120:this.firstMixDelay()); if(this.game==='ssq')this.phase = 'blue'; }
     if (red.events.length > redTarget || blue.events.length > blueTarget) this.fail('出球机构出现连续出球，本场无效，请重新开始。');
     const delivered=this.game!=='dlt'||this.chambers.every(c=>c.wheel!.drained&&this.landed(c));
     if (blue.events.length === blueTarget && this.tick >= blue.events[blueTarget-1].tick + (this.game==='dlt'?60:180)&&delivered) this.phase = 'complete';

@@ -24,9 +24,15 @@ for (let i = offset; i < count; i++) {
     }assert.equal(columns.size,5,'Five distinct front loading columns');
   }
   let rearReleased=false;const mixingSamples:{upper:number,lower:number}[]=[],rearMixingSamples:{upper:number,lower:number,pinned:number}[]=[];
+  const gateOpenings:number[][]=[[],[]],wasOpen=[false,false],seenEvents=[0,0];
   const outerRoute=new Set<string>();
   while (!['complete', 'failed'].includes(sim.phase)) {
     sim.step();
+    if(game==='ssq')sim.chambers.forEach((chamber,zone)=>{
+      if(chamber.open&&!wasOpen[zone])gateOpenings[zone].push(sim.tick);
+      wasOpen[zone]=chamber.open;
+      if(chamber.events.length>seenEvents[zone]){const delay=chamber.nextOpen-chamber.events.at(-1)!.tick;assert(delay>=600&&delay<=840,'After delivery the next valve opening waits 5–7 seconds');seenEvents[zone]=chamber.events.length;}
+    });
     if(game==='dlt') {
       if(sim.tick>=1200&&sim.tick<=1920&&sim.tick%24===0){const heights=sim.chambers[0].balls.map(b=>b.body.translation().y);mixingSamples.push({upper:heights.filter(y=>y>3.25).length,lower:heights.filter(y=>y<2.5).length});}
       if(sim.blueStart&&sim.tick>=sim.blueStart+1200&&sim.tick<sim.blueStart+1680&&sim.tick%24===0){const balls=sim.chambers[1].balls;rearMixingSamples.push({upper:balls.filter(b=>b.body.translation().y>3.1).length,lower:balls.filter(b=>b.body.translation().y<2.65).length,pinned:balls.filter(b=>b.body.translation().y>3.4&&Math.abs(b.body.linvel().y)<.15).length});}
@@ -58,7 +64,11 @@ for (let i = offset; i < count; i++) {
   if(game==='dlt')assert(s.events.every(e=>outerRoute.has(`${e.color}:${e.number}`)),'Every drawn ball must physically traverse the exterior left route');
   firstSnapshot??=s;
   const red = s.events.filter(e => e.color === 'red'), blue = s.events.filter(e => e.color === 'blue');
-  if(game==='ssq')for(let j=1;j<red.length;j++)assert(red[j].tick-red[j-1].tick>=360,'SSQ waits at least three seconds before admitting the next red ball');
+  if(game==='ssq'){
+    assert(gateOpenings[0][0]-240>=1080&&gateOpenings[0][0]-240<=1440,'The first red valve opens 9–12 seconds after mixing starts');
+    assert(gateOpenings[1][0]-sim.blueStart>=1080&&gateOpenings[1][0]-sim.blueStart<=1440,'The first blue valve opens 9–12 seconds after mixing starts');
+    for(let j=1;j<red.length;j++)assert(red[j].tick-red[j-1].tick>=600,'SSQ waits at least five seconds before the next red ball');
+  }
   assert.equal(red.length, config.draws[0]); assert.equal(new Set(red.map(e => e.number)).size, config.draws[0]); assert.equal(blue.length, config.draws[1]);assert.equal(new Set(blue.map(e=>e.number)).size,config.draws[1]);
   assert(red.every(e => e.number >= 1 && e.number <= config.counts[0])); assert(blue.every(e=>e.number>=1&&e.number<=config.counts[1])); assert(blue[0].tick > red.at(-1)!.tick);
   let previousX = -Infinity;
