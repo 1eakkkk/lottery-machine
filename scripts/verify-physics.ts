@@ -58,6 +58,7 @@ for (let i = offset; i < count; i++) {
   if(game==='dlt')assert(s.events.every(e=>outerRoute.has(`${e.color}:${e.number}`)),'Every drawn ball must physically traverse the exterior left route');
   firstSnapshot??=s;
   const red = s.events.filter(e => e.color === 'red'), blue = s.events.filter(e => e.color === 'blue');
+  if(game==='ssq')for(let j=1;j<red.length;j++)assert(red[j].tick-red[j-1].tick>=360,'SSQ waits at least three seconds before admitting the next red ball');
   assert.equal(red.length, config.draws[0]); assert.equal(new Set(red.map(e => e.number)).size, config.draws[0]); assert.equal(blue.length, config.draws[1]);assert.equal(new Set(blue.map(e=>e.number)).size,config.draws[1]);
   assert(red.every(e => e.number >= 1 && e.number <= config.counts[0])); assert(blue.every(e=>e.number>=1&&e.number<=config.counts[1])); assert(blue[0].tick > red.at(-1)!.tick);
   let previousX = -Infinity;

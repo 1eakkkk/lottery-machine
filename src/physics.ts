@@ -2,7 +2,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { GAMES } from './games';
 import { airVelocity,venusAirVelocity,venusCycleGain } from './airflow';
 import { VenusWheel } from './venus-wheel';
-export const MODEL_VERSION = 'ssq-mechanical-v2';
+export const MODEL_VERSION = 'ssq-mechanical-v3';
 export const DT = 1 / 120, BALL_RADIUS = 0.082, CHAMBER_RADIUS = 1.08, CENTER_Y = 2.7, FLOOR_Y = 1.94;
 export const PORT_Z = 0.48, PORT_RADIUS = 0.158, ROTOR_Y = 2.08, ROTOR_X = 0.30, ROTOR_Z = 0.24, ANGULAR_SPEED = 8.0;
 export const TUBE_RADIUS=.106;
@@ -87,7 +87,7 @@ export class Chamber {
   private loadingCap?:RAPIER.Collider;
   wheel?:VenusWheel;
   get portZ(){return this.venus?0:PORT_Z;}
-  constructor(public world: RAPIER.World, public color: 'red' | 'blue', public offset: number, count: number, rng: () => number, public airflow=false, public tray=TRAY, public motorSpeed=ANGULAR_SPEED,public venus=false) {
+  constructor(public world: RAPIER.World, public color: 'red' | 'blue', public offset: number, count: number, rng: () => number, public airflow=false, public tray=TRAY, public motorSpeed=ANGULAR_SPEED,public venus=false,public drawInterval=240) {
     const fixed = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(offset, 0, 0)), shell = shellGeometry(venus);
     world.createCollider(RAPIER.ColliderDesc.trimesh(shell.vertices, shell.indices).setFriction(0.2).setRestitution(0.48), fixed);
     if(venus) { const cap=shellGeometry(false,true);this.loadingCap=world.createCollider(RAPIER.ColliderDesc.trimesh(cap.vertices,cap.indices).setCollisionGroups(0x00040001).setFriction(.2).setRestitution(.48),fixed);this.loadingCap.setEnabled(false); }
@@ -200,7 +200,7 @@ export class Chamber {
       const inTube=this.venus?Math.hypot(p.x-this.offset,p.z)<TUBE_RADIUS-BALL_RADIUS+.006:Math.abs(p.x-this.offset)<PORT_RADIUS&&Math.abs(p.z-this.portZ)<PORT_RADIUS;
       if(this.open&&!ball.selected&&inTube&&p.y<(this.venus?DLT_PORT_Y:FLOOR_Y)-.14){this.setGate(false);this.lockTick=tick;}
       if (!ball.selected && p.y < (this.venus?DLT_PORT_Y:FLOOR_Y) - .42 && inTube) {
-        ball.selected = true; this.events.push({ color: this.color, number: ball.number, tick }); this.setGate(false); this.nextOpen = tick + 240;this.lockTick=-1;this.outletOpen=false;this.outletGate.setEnabled(true);
+        ball.selected = true; this.events.push({ color: this.color, number: ball.number, tick }); this.setGate(false); this.nextOpen = tick + this.drawInterval;this.lockTick=-1;this.outletOpen=false;this.outletGate.setEnabled(true);
       }
     }
   }
@@ -211,7 +211,7 @@ export class DrawSimulation {
     const rng = randomGenerator(seed); this.seedPhase = rng() * 6;
     this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 }); this.world.timestep = DT; this.world.numSolverIterations = 8;
     const config=GAMES[game];
-    this.chambers = [new Chamber(this.world, 'red', -1.45, config.counts[0], rng,config.mixing==='airflow',game==='dlt'?DLT_TRAY:TRAY,ANGULAR_SPEED,game==='dlt'), new Chamber(this.world, 'blue', 1.45, config.counts[1], rng,config.mixing==='airflow',game==='dlt'?DLT_TRAY:TRAY,ANGULAR_SPEED,game==='dlt')];
+    this.chambers = [new Chamber(this.world, 'red', -1.45, config.counts[0], rng,config.mixing==='airflow',game==='dlt'?DLT_TRAY:TRAY,ANGULAR_SPEED,game==='dlt',game==='ssq'?360:240), new Chamber(this.world, 'blue', 1.45, config.counts[1], rng,config.mixing==='airflow',game==='dlt'?DLT_TRAY:TRAY,ANGULAR_SPEED,game==='dlt',game==='ssq'?360:240)];
   }
   start() { this.started = true; this.phase = 'loading'; }
   step() {
