@@ -34,6 +34,15 @@ try {
   check((await call('/api/records',draw,cookie)).status===200,'Authenticated user can save');
   check((await call('/api/records',draw,cookie)).status===200,'Retry is idempotent');
   check((await (await call('/api/records?game=ssq',undefined,cookie)).json() as {records:unknown[]}).records.length===1,'Retry does not duplicate records');
+  for(const model of ['ssq-mechanical-v2','ssq-mechanical-v3']){
+    const olderDraw={...draw,id:`test-draw-${model}`,model};
+    check((await call('/api/records',olderDraw,cookie)).status===200,'A previously published SSQ page can still save its complete draw');
+    const saved=await (await call('/api/records?game=ssq',undefined,cookie)).json() as {records:{id:string;model:string}[]};
+    check(saved.records.find(r=>r.id===olderDraw.id)?.model===model,'Saving an older draw preserves its original replay model');
+    check((await call('/api/records',{...olderDraw,events:[]},cookie)).status===400,'Older model compatibility cannot bypass event validation');
+  }
+  check((await call('/api/records',{...draw,model:'ssq-mechanical-v999'},cookie)).status===400,'Unknown models remain rejected');
+  check((await call('/api/records',{...draw,model:GAMES.dlt.model},cookie)).status===400,'A model from another game is rejected');
   check((await call('/api/records',draw,cookie,'https://evil.example')).status===403,'Cross-origin writes rejected');
   check((await call('/api/records',{...draw,seed:-1},cookie)).status===400,'Invalid seed rejected');
   check((await call('/api/records',{...draw,events:[]},cookie)).status===400,'Incomplete records rejected');

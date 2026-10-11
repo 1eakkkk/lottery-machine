@@ -1,12 +1,18 @@
 import { GAMES, type GameId, eventZone } from '../src/games';
 import type { DrawEvent } from '../src/physics';
 export interface SavedDraw { id: string; game: GameId; seed: number; model: string; date: string; events: DrawEvent[] }
+// Published SSQ versions share the same record format; only their gate timing
+// differs. Store their original model so the UI does not replay them as v4.
+const previousSsqModels = new Set(['ssq-mechanical-v2','ssq-mechanical-v3']);
+function supportedModel(game:GameId,model:unknown){
+  return model===GAMES[game].model||(game==='ssq'&&typeof model==='string'&&previousSsqModels.has(model));
+}
 export function validateDraw(value: unknown): SavedDraw | undefined {
   if (!value || typeof value !== 'object') return;
   const r = value as SavedDraw;
   if (typeof r.game !== 'string' || !Object.hasOwn(GAMES, r.game)) return;
   const g = GAMES[r.game];
-  if (typeof r.id !== 'string' || !/^[\w-]{8,100}$/.test(r.id) || r.model !== g.model ||
+  if (typeof r.id !== 'string' || !/^[\w-]{8,100}$/.test(r.id) || !supportedModel(r.game,r.model) ||
     !Number.isInteger(r.seed) || r.seed < 0 || r.seed > 0xffffffff || typeof r.date !== 'string' ||
     !Number.isFinite(Date.parse(r.date)) || Date.parse(r.date) > Date.now() + 300000 ||
     !Array.isArray(r.events) || r.events.length !== g.draws.reduce((a,b) => a+b,0)) return;
