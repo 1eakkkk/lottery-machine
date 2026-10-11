@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {accountErrorMessage} from '../src/account-errors';
+const mismatch=accountErrorMessage('/api/records',400,{message:'记录不完整或模型版本不匹配'});
+assert(mismatch.includes('模型版本不匹配'));assert(!mismatch.includes('邮件'));
+assert(accountErrorMessage('/api/records',401,{}).includes('重新登录'));
+assert(accountErrorMessage('/api/records',503,{}).includes('尚未确认保存'));
+assert(accountErrorMessage('/api/records?game=ssq',403,{message:'请求来源无效'}).includes('请求来源无效'));
+assert(!accountErrorMessage('/api/records',400,{message:123}).includes('邮件'));
+assert(accountErrorMessage('/api/auth/sign-in/email',403,{code:'EMAIL_NOT_VERIFIED'}).includes('验证邮箱'));
+assert.equal(accountErrorMessage('/api/auth/sign-up/email',503,{message:'邮件服务尚未接通，请稍后再试。'}),'邮件服务尚未接通，请稍后再试。');
+console.log('Account error messages: 8 checks passed.');

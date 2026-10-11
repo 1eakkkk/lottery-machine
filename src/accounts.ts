@@ -1,5 +1,6 @@
 import type { SavedDraw } from '../server/records';
 import { GAMES, type GameId } from './games';
+import { accountErrorMessage } from './account-errors';
 type User = { id:string; name:string; email:string };
 export class Accounts {
   user:User|null=null;
@@ -45,7 +46,7 @@ export class Accounts {
       headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
     const result=await response.json();
     if(!response.ok){if(response.status===401&&path.startsWith('/api/records')){this.generation++;this.user=null;this.records=[];this.renderAccount();this.changed();}
-      throw new Error(response.status===429?'操作太频繁，请稍后重试。':result.code==='EMAIL_NOT_VERIFIED'?'请先验证邮箱，可点击下方重新发送。':result.code==='INVALID_EMAIL_OR_PASSWORD'?'邮箱或密码不正确。':response.status>=500?(result.message==='邮件服务尚未接通，请稍后再试。'?result.message:'账户服务暂时不可用，请稍后重试。'):result.code==='INVALID_TOKEN'?'链接无效或已过期，请重新申请。':'操作未完成，请检查输入或重新申请邮件链接。');}
+      throw new Error(accountErrorMessage(path,response.status,result));}
     return result as T;
   }
   async refreshSession() {
