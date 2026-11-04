@@ -3,7 +3,8 @@ export interface Env {
   DB: D1Database; ASSETS: Fetcher; BETTER_AUTH_SECRET: string;
   RESEND_API_KEY?: string; AUTH_ORIGIN: string; MAIL_FROM: string;
 }
-export function createAuth(env: Env) {
+export function createAuth(env: Env, requestOrigin = env.AUTH_ORIGIN) {
+  const origin = [env.AUTH_ORIGIN, 'https://lottery.1eak.cool'].includes(requestOrigin) ? requestOrigin : env.AUTH_ORIGIN;
   async function mail(to: string, url: string, reset: boolean) {
     if (!env.RESEND_API_KEY) throw new Error('Email service unavailable');
     const now=Date.now(),day=Math.floor(now/86400000),hour=Math.floor(now/3600000);
@@ -23,8 +24,8 @@ export function createAuth(env: Env) {
     if (!response.ok) throw new Error('Email delivery failed');
   }
   return betterAuth({
-    appName: '一刻开奖', baseURL: env.AUTH_ORIGIN, secret: env.BETTER_AUTH_SECRET,
-    database: env.DB, trustedOrigins: [env.AUTH_ORIGIN],
+    appName: '一刻开奖', baseURL: origin, secret: env.BETTER_AUTH_SECRET,
+    database: env.DB, trustedOrigins: [origin],
     emailAndPassword: { enabled: true, requireEmailVerification: true, minPasswordLength: 12,
       maxPasswordLength: 128, resetPasswordTokenExpiresIn: 1800, revokeSessionsOnPasswordReset: true,
       sendResetPassword: ({ user, url }) => mail(user.email, url, true) },

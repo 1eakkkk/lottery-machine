@@ -8,7 +8,7 @@ export default {
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     if (url.pathname === '/api/status') return json({ accountsReady: Boolean(env.BETTER_AUTH_SECRET && env.RESEND_API_KEY) });
     if (!env.BETTER_AUTH_SECRET) return json({ message:'账户服务暂未启用，仍可直接开奖。' },503);
-    const auth = createAuth(env);
+    const auth = createAuth(env, url.origin);
     try {
       if (url.pathname.startsWith('/api/auth/')) {
         if (!env.RESEND_API_KEY && ['/sign-up/email','/request-password-reset','/send-verification-email'].some(path=>url.pathname.endsWith(path)))
@@ -27,7 +27,7 @@ export default {
         return json({records:rows.results.map(r=>({...r,events:JSON.parse(r.events)}))});
       }
       if (request.method!=='POST') return json({message:'不支持此操作'},405);
-      if (request.headers.get('Origin')!==env.AUTH_ORIGIN || !request.headers.get('Content-Type')?.startsWith('application/json')) return json({message:'请求来源无效'},403);
+      if (request.headers.get('Origin')!==url.origin || ![env.AUTH_ORIGIN,'https://lottery.1eak.cool'].includes(url.origin) || !request.headers.get('Content-Type')?.startsWith('application/json')) return json({message:'请求来源无效'},403);
       const text=await request.text();
       if (text.length>16000) return json({message:'记录过大'},413);
       let value:unknown;try{value=JSON.parse(text);}catch{return json({message:'记录格式无效'},400);}

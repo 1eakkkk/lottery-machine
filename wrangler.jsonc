@@ -15,8 +15,8 @@
     "not_found_handling": "none"
   },
   "vars": {
-    "AUTH_ORIGIN": "https://lottery.1eak.cool",
-    "MAIL_FROM": "一刻开奖 <accounts@1eak.cool>"
+    "AUTH_ORIGIN": "https://lottery.1eak.me",
+    "MAIL_FROM": "一刻开奖 <accounts@1eak.me>"
   },
   "d1_databases": [
     {
@@ -27,6 +27,10 @@
     }
   ],
   "routes": [
+    {
+      "pattern": "lottery.1eak.me",
+      "custom_domain": true
+    },
     {
       "pattern": "lottery.1eak.cool",
       "custom_domain": true

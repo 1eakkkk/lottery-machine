@@ -2,7 +2,7 @@
 
 支持双色球、大乐透、福彩 3D、七乐彩、快乐 8 的三维开奖模拟网站。Rapier 3D WASM 计算球体和机器的真实碰撞；双色球使用双向机械转盘，大乐透使用经验气流阻力场，分别带动球体混合。Three.js 显示透明球仓、机构和实际建模的出球通道。
 
-- 已上线：https://lottery.1eak.cool
+- 已上线：https://lottery.1eak.me
 - 公开仓库：https://github.com/1eakkkk/lottery-machine
 - 完整产品与实施方案：[PROJECT_PLAN.md](PROJECT_PLAN.md)
 
@@ -42,7 +42,7 @@ npm run build
 npx wrangler deploy
 ```
 
-运行前需要登录具有目标账户和域名权限的 Cloudflare 账号。`routes` 只连接 `lottery.1eak.cool`。源码和依赖锁文件应一同提交，凭据不能提交到仓库。
+运行前需要登录具有目标账户和域名权限的 Cloudflare 账号。`routes` 只连接 `lottery.1eak.me`。源码和依赖锁文件应一同提交，凭据不能提交到仓库。
 
 GitHub Actions 负责构建与物理检查。Cloudflare 已连接该仓库的 main 分支，推送后运行 `npm test && npm run build` 并自动部署；已验证一次真实提交触发成功发布。预览分支部署关闭。验收范围和实际限制见 [DELIVERY.md](DELIVERY.md)。
 

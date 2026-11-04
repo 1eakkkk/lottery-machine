@@ -4,7 +4,7 @@
 
 ## 邮件配置（Resend 免费方案）
 
-1. 当前 `1eak.cool` 已在 Resend 验证通过，发件人为 `accounts@1eak.cool`，无需修改 DNS。若改用其他域名，先在 Resend 验证，再相应修改 `wrangler.jsonc` 中 `MAIL_FROM`，不要覆盖原有邮件记录。
+1. 当前 `1eak.me` 已在 Resend 验证通过，发件人为 `accounts@1eak.me`，无需修改 DNS。若改用其他域名，先在 Resend 验证，再相应修改 `wrangler.jsonc` 中 `MAIL_FROM`，不要覆盖原有邮件记录。
 2. 创建仅允许发送邮件、限定该域名的 API Key。在 Cloudflare 的 `lottery-machine → 设置 → 变量和机密` 中添加 **Secret** `RESEND_API_KEY`。不要发送到聊天，不要放进 GitHub 仓库，也不要添加为普通公开变量。
 3. 应用并部署配置。在 `/api/status` 确认 `accountsReady: true`，用自己的邮箱注册，实际完成验证，再测试找回密码。
 
